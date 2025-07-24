@@ -345,6 +345,12 @@ body {
     color: var(--primary-color);
 }
 
+.token-warning {
+    background: #fff3e0;
+    color: #ef6c00;
+    border: 1px solid #ff9800;
+}
+
 /* Install prompt */
 .install-prompt {
     background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));

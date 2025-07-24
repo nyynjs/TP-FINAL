@@ -2,8 +2,11 @@
 class TourPlannerApp {
     constructor() {
         this.config = {
+            username: '',
+            password: '',
             bearerToken: '',
-            proxyUrl: ''
+            proxyUrl: '',
+            tokenExpires: null
         };
         this.data = {
             territories: [],
@@ -36,20 +39,41 @@ class TourPlannerApp {
         // Update token status
         this.updateTokenStatus();
         
-        // If we have a valid token, load initial data
-        if (this.config.bearerToken) {
-            console.log('Loading territories...');
+        // Auto-login if we have credentials but no valid token
+        if (this.config.username && this.config.password && !this.isTokenValid()) {
+            setTimeout(() => {
+                this.refreshToken();
+            }, 1000);
+        } else if (this.isTokenValid()) {
+            // If we have a valid token, load territories
+            console.log('Valid token found, loading territories...');
             this.loadTerritories();
         }
     }
 
     loadConfig() {
+        const savedUsername = localStorage.getItem('tp_username');
+        const savedPassword = localStorage.getItem('tp_password');
         const savedToken = localStorage.getItem('tp_bearer_token');
+        const savedTokenExpires = localStorage.getItem('tp_token_expires');
         const savedProxy = localStorage.getItem('tp_proxy_url');
+        
+        if (savedUsername) {
+            this.config.username = savedUsername;
+            document.getElementById('username').value = savedUsername;
+        }
+        
+        if (savedPassword) {
+            this.config.password = savedPassword;
+            document.getElementById('password').value = savedPassword;
+        }
         
         if (savedToken) {
             this.config.bearerToken = savedToken;
-            document.getElementById('bearerToken').value = savedToken;
+        }
+        
+        if (savedTokenExpires) {
+            this.config.tokenExpires = new Date(savedTokenExpires);
         }
         
         if (savedProxy) {
@@ -62,7 +86,10 @@ class TourPlannerApp {
     }
 
     saveConfig() {
+        localStorage.setItem('tp_username', this.config.username);
+        localStorage.setItem('tp_password', this.config.password);
         localStorage.setItem('tp_bearer_token', this.config.bearerToken);
+        localStorage.setItem('tp_token_expires', this.config.tokenExpires?.toISOString() || '');
         localStorage.setItem('tp_proxy_url', this.config.proxyUrl);
     }
 
@@ -70,30 +97,44 @@ class TourPlannerApp {
         const statusEl = document.getElementById('tokenStatus');
         const actionForm = document.getElementById('actionForm');
         
-        if (this.config.bearerToken && this.config.bearerToken.length > 10) {
-            statusEl.className = 'token-status token-valid';
-            statusEl.textContent = '✅ Token skonfigurowany';
-            actionForm.classList.remove('hidden');
+        if (this.config.username && this.config.password) {
+            const tokenValid = this.config.bearerToken && this.isTokenValid();
+            
+            if (tokenValid) {
+                statusEl.className = 'token-status token-valid';
+                statusEl.textContent = `✅ Zalogowany jako: ${this.config.username}`;
+                actionForm.classList.remove('hidden');
+            } else {
+                statusEl.className = 'token-status token-warning';
+                statusEl.textContent = `🔄 Dane logowania zapisane - pobieranie tokenu...`;
+                actionForm.classList.add('hidden');
+                // Automatycznie pobierz nowy token
+                this.refreshToken();
+            }
         } else {
             statusEl.className = 'token-status token-invalid';
-            statusEl.textContent = '❌ Brak tokena - wprowadź Bearer token';
+            statusEl.textContent = '❌ Wprowadź dane logowania';
             actionForm.classList.add('hidden');
         }
+    }
+
+    isTokenValid() {
+        if (!this.config.tokenExpires) return false;
+        const now = new Date();
+        const expiresIn5Min = new Date(this.config.tokenExpires.getTime() - 5 * 60 * 1000);
+        return now < expiresIn5Min;
     }
 
     setupEventListeners() {
         // Save configuration
         document.getElementById('saveConfig').addEventListener('click', () => {
-            this.config.bearerToken = document.getElementById('bearerToken').value.trim();
+            this.config.username = document.getElementById('username').value.trim();
+            this.config.password = document.getElementById('password').value.trim();
             this.config.proxyUrl = document.getElementById('proxyUrl').value.trim() || window.location.origin;
             
             this.saveConfig();
             this.updateTokenStatus();
             this.showStatus('configStatus', 'Konfiguracja zapisana!', 'success');
-            
-            if (this.config.bearerToken) {
-                this.loadTerritories();
-            }
         });
 
         // Test connection
@@ -101,6 +142,11 @@ class TourPlannerApp {
             this.testConnection();
         });
 
+        // Refresh token manually
+        document.getElementById('refreshToken').addEventListener('click', () => {
+            this.refreshToken();
+        });
+        
         // Velo mode toggle
         document.getElementById('veloMode').addEventListener('change', (e) => {
         this.handleVeloModeToggle(e.target.checked);
@@ -193,7 +239,72 @@ document.getElementById('tpEvent').addEventListener('change', (e) => {
         document.getElementById('tpFromTime').value = `${currentHour}:${currentMinute}`;
     }
 
+    async refreshToken() {
+        if (!this.config.username || !this.config.password) {
+            this.showStatus('configStatus', 'Najpierw wprowadź dane logowania!', 'error');
+            return false;
+        }
+
+        this.showStatus('configStatus', 'Pobieranie nowego tokenu...', 'warning');
+
+        try {
+            const response = await fetch('https://api2.tourplanner.tdy-apps.com/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                },
+                body: JSON.stringify({
+                    username: this.config.username,
+                    password: this.config.password
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Błąd HTTP: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data.status && data.status.success && data.data && data.data.token) {
+                this.config.bearerToken = data.data.token.uuid;
+                this.config.tokenExpires = new Date(data.data.token.expires.date);
+                
+                this.saveConfig();
+                this.updateTokenStatus();
+                
+                console.log(`✅ Nowy token pobrany! Wygasa: ${this.config.tokenExpires.toLocaleString()}`);
+                this.showStatus('configStatus', `✅ Token odświeżony! Wygasa: ${this.config.tokenExpires.toLocaleString()}`, 'success');
+                
+                // Automatycznie załaduj dane po pobraniu tokenu
+                this.loadTerritories();
+                
+                return true;
+            } else {
+                throw new Error('Niepoprawna odpowiedź API - brak tokenu');
+            }
+        } catch (error) {
+            console.error('Token refresh failed:', error);
+            this.showStatus('configStatus', `❌ Błąd pobierania tokenu: ${error.message}`, 'error');
+            return false;
+        }
+    }
+
+    async ensureValidToken() {
+        if (!this.isTokenValid()) {
+            console.log('Token wygasł lub nie istnieje, pobieranie nowego...');
+            return await this.refreshToken();
+        }
+        return true;
+    }
+
     async apiRequest(endpoint, method = 'POST', body = null) {
+        // Sprawdź czy token jest ważny przed każdym zapytaniem
+        const tokenValid = await this.ensureValidToken();
+        if (!tokenValid) {
+            throw new Error('Nie można pobrać ważnego tokenu');
+        }
+
         const url = `${this.config.proxyUrl}/api/tourplanner/${endpoint}`;
         
         const options = {
@@ -212,6 +323,22 @@ document.getElementById('tpEvent').addEventListener('change', (e) => {
         const response = await fetch(url, options);
         
         if (!response.ok) {
+            // Jeśli błąd 401, spróbuj odświeżyć token i powtórzyć zapytanie
+            if (response.status === 401) {
+                console.log('Otrzymano 401, odświeżanie tokenu...');
+                const refreshed = await this.refreshToken();
+                if (refreshed) {
+                    // Powtórz zapytanie z nowym tokenem
+                    options.headers['Authorization'] = `Bearer ${this.config.bearerToken}`;
+                    const retryResponse = await fetch(url, options);
+                    if (!retryResponse.ok) {
+                        const errorText = await retryResponse.text();
+                        throw new Error(`API Error ${retryResponse.status}: ${errorText}`);
+                    }
+                    return await retryResponse.json();
+                }
+            }
+            
             const errorText = await response.text();
             throw new Error(`API Error ${response.status}: ${errorText}`);
         }
@@ -220,14 +347,21 @@ document.getElementById('tpEvent').addEventListener('change', (e) => {
     }
 
     async testConnection() {
-        if (!this.config.bearerToken) {
-            this.showStatus('configStatus', 'Najpierw wprowadź Bearer token!', 'error');
+        if (!this.config.username || !this.config.password) {
+            this.showStatus('configStatus', 'Najpierw wprowadź dane logowania!', 'error');
             return;
         }
 
         this.showStatus('configStatus', 'Testowanie połączenia...', 'warning');
 
         try {
+            // Najpierw pobierz token
+            const tokenRefreshed = await this.refreshToken();
+            if (!tokenRefreshed) {
+                return;
+            }
+
+            // Potem przetestuj API
             const testData = await this.apiRequest('territory/list', 'POST', {
                 pagination: { page: 0, pageSize: 1 }
             });
@@ -354,32 +488,6 @@ setupVeloPoint() {
 }
 
 populateTerritories() {
-    console.log('POPULATE: Starting with', this.data.territories.length, 'territories');
-    console.log('POPULATE: First territory structure:', JSON.stringify(this.data.territories[0], null, 2));
-    
-    const select = document.getElementById('tpTerr');
-    console.log('POPULATE: Found select element:', !!select);
-    select.innerHTML = '<option value="">Wybierz region...</option>';
-    
-    this.data.territories.forEach((territory, i) => {
-        console.log(`POPULATE: Processing territory ${i}:`, territory);
-        
-        // Sprawdź różne możliwe struktury danych
-        let territoryName = territory.ident || territory.name || territory.title || `Territory ${i + 1}`;
-        let territoryUuid = territory.uuid || territory.id || '';
-        
-        console.log(`POPULATE: Territory ${i} - UUID: ${territoryUuid}, Name: ${territoryName}`);
-        
-        const option = document.createElement('option');
-        option.value = `${territoryUuid}|${territoryName}`;
-        option.textContent = territoryName;
-        select.appendChild(option);
-    });
-    
-    console.log('POPULATE: Done, select has', select.children.length, 'options');
-}
-
-   populateTerritories() {
     console.log('POPULATE: Starting with', this.data.territories.length, 'territories');
     console.log('POPULATE: First territory structure:', JSON.stringify(this.data.territories[0], null, 2));
     
@@ -683,6 +791,7 @@ populateTerritories() {
         
         dropdown.style.display = 'block';
     }
+
 
     selectUser(user) {
         const displayName = `${user.firstname} ${user.lastname} (${user.ident})`;
