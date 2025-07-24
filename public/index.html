@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TourPlanner Pro</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css">
+    <meta name="theme-color" content="#2196F3">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="TourPlanner Pro">
+    <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyIiBoZWlnaHQ9IjE5MiIgdmlld0JveD0iMCAwIDE5MiAxOTIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxOTIiIGhlaWdodD0iMTkyIiByeD0iMjQiIGZpbGw9IiMyMTk2RjMiLz4KPHBhdGggZD0iTTk2IDQ4QzgwLjUzNiA0OCA2OCA2MC41MzYgNjggNzZWMTE2QzY4IDEzMS40NjQgODAuNTM2IDE0NCA5NiAxNDRDMTExLjQ2NCAxNDQgMTI0IDEzMS40NjQgMTI0IDExNlY3NkMxMjQgNjAuNTM2IDExMS40NjQgNDggOTYgNDhaIiBmaWxsPSJ3aGl0ZSIvPgo8Y2lyY2xlIGN4PSI5NiIgY3k9IjE2MCIgcj0iMTIiIGZpbGw9IndoaXRlIi8+Cjwvc3ZnPgo=">
+</head>
+<body>
+    <div class="container">
+        <!-- Install Prompt -->
+        <div id="installPrompt" class="install-prompt">
+            📱 Dodaj TourPlanner do ekranu głównego dla łatwiejszego dostępu!
+            <button id="installBtn">Zainstaluj</button>
+            <button id="dismissInstall" style="background: transparent; color: white;">✕</button>
+        </div>
+
+        <!-- Header -->
+        <div class="header">
+            <h1>🚀 TourPlanner Pro</h1>
+            <div class="subtitle">Szybkie tworzenie akcji</div>
+        </div>
+
+        <div class="content">
+            <!-- Token Configuration Section -->
+            <div class="section">
+                <div class="section-title">
+                    🔑 Konfiguracja
+                </div>
+                
+                <div id="tokenStatus" class="token-status"></div>
+                
+                <div class="form-group">
+                    <label for="bearerToken">Bearer Token:</label>
+                    <input type="password" id="bearerToken" class="form-control" placeholder="Wklej swój Bearer token tutaj">
+                </div>
+
+                <div class="form-group">
+                    <label for="proxyUrl">Proxy Server URL:</label>
+                    <input type="url" id="proxyUrl" class="form-control" value="" placeholder="https://your-proxy-server.com">
+                    <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+                        💡 Zostaw puste dla bieżącego serwera
+                    </small>
+                </div>
+                
+                <button id="saveConfig" class="btn btn-primary btn-block">💾 Zapisz konfigurację</button>
+                <button id="testConnection" class="btn btn-warning btn-block">🔍 Test połączenia</button>
+                
+                <div id="configStatus" class="status"></div>
+            </div>
+
+            <!-- Action Creation Form -->
+            <div id="actionForm" class="section hidden">
+                <div class="section-title">
+                    📝 Nowa akcja
+                </div>
+
+                <form id="tpForm">
+                    <div class="form-group">
+                        <label for="tpName">📝 Nazwa akcji:</label>
+                        <input type="text" id="tpName" class="form-control" required placeholder="Wprowadź nazwę akcji">
+                    </div>
+
+                    <!-- Velo Checkbox -->
+                    <div class="form-group">
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="veloMode" class="checkbox">
+                            <label for="veloMode" class="checkbox-label">🚴 Akcja Velo</label>
+                        </div>
+                        <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+                            💡 Automatycznie ustawia event "Unconvencional" i punkt "Unconvencional_R409D2S1"
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tpTerr">🌍 Region/Terytorium:</label>
+                        <select id="tpTerr" class="form-control" required>
+                            <option value="">⏳ Ładowanie...</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tpEvent">🎯 Event:</label>
+                        <select id="tpEvent" class="form-control" required>
+                            <option value="">Najpierw wybierz region</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tpPointSearch">📍 Punkt:</label>
+                        <div class="search-container">
+                            <input type="text" id="tpPointSearch" class="form-control" placeholder="Najpierw wybierz region i event" autocomplete="off" disabled>
+                            <div id="tpPointDropdown" class="dropdown"></div>
+                            <input type="hidden" id="tpPoint" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tpDate">📅 Data:</label>
+                        <input type="date" id="tpDate" class="form-control" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tpFromTime">🕒 Godzina rozpoczęcia:</label>
+                        <input type="time" id="tpFromTime" class="form-control" value="10:00" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tpToTime">🕘 Godzina zakończenia:</label>
+                        <input type="time" id="tpToTime" class="form-control" value="14:00" required>
+                        <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+                            💡 Automatycznie ustawiona na +4h, możesz zmienić
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tpUserSearch">👥 Personel:</label>
+                        <div class="search-container">
+                            <input type="text" id="tpUserSearch" class="form-control" placeholder="Najpierw wybierz region" autocomplete="off" disabled>
+                            <div id="tpUserDropdown" class="dropdown"></div>
+                            <input type="hidden" id="tpUser" required>
+                        </div>
+                    </div>
+
+                    <button type="submit" id="submitBtn" class="btn btn-primary btn-block">
+                        <span class="btn-text">🚀 Utwórz akcję</span>
+                        <span class="loading hidden"></span>
+                    </button>
+                </form>
+
+                <div id="formStatus" class="status"></div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="section">
+                <div class="section-title">
+                    ⚡ Szybkie akcje
+                </div>
+                
+                <div class="quick-actions">
+                    <button id="refreshData" class="btn btn-secondary btn-block">🔄 Odśwież dane</button>
+                    <a href="debug.html" class="btn btn-warning btn-block">🔍 Panel debugowania</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TourPlanner Debug Panel</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .debug-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success { border-color: #28a745; background: #d4edda; }
+        .error { border-color: #dc3545; background: #f8d7da; }
+        .warning { border-color: #ffc107; background: #fff3cd; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 TourPlanner Debug Panel</h1>
+            <div class="subtitle">Panel diagnostyczny API</div>
+        </div>
+
+        <div class="content">
+            <div class="debug-section">
+                <h3>⚙️ Konfiguracja</h3>
+                <div class="form-group">
+                    <label>Bearer Token:</label>
+                    <input type="password" id="token" placeholder="Wklej token z aplikacji">
+                </div>
+                <div class="form-group">
+                    <label>Proxy URL:</label>
+                    <input type="url" id="proxyUrl" placeholder="http://localhost:5000">
+                </div>
+                <div class="form-group">
+                    <label>Direct API URL:</label>
+                    <input type="url" id="directUrl" value="https://api2.tourplanner.tdy-apps.com" readonly>
+                </div>
+            </div>
+
+            <div class="debug-section">
+                <h3>🩺 Testy diagnostyczne</h3>
+                <button onclick="testProxyHealth()" class="btn btn-primary">1. Test Health Proxy</button>
+                <button onclick="testDirectAPI()" class="btn btn-secondary">2. Test Direct API (CORS)</button>
+                <button onclick="testProxyAPI()" class="btn btn-primary">3. Test Proxy API</button>
+                <button onclick="compareRequests()" class="btn btn-warning">4. Porównaj zapytania</button>
+                <button onclick="clearResults()" class="btn btn-secondary">🗑️ Wyczyść wyniki</button>
+                
+                <div id="results"></div>
+            </div>
+
+            <div class="debug-section">
+                <h3>📊 Analiza Network</h3>
+                <p>Otwórz DevTools (F12) → Network tab i wykonaj testy powyżej aby zobaczyć szczegóły zapytań HTTP</p>
+                <button onclick="showNetworkInstructions()" class="btn btn-warning">📖 Instrukcje debugowania</button>
+                
+                <div class="form-group" style="margin-top: 20px;">
+                    <a href="/" class="btn btn-primary">← Powrót do aplikacji</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-detect proxy URL
+        document.getElementById('proxyUrl').value = window.location.origin;
+        
+        function addResult(title, content, type = 'result') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.innerHTML = `<h4>${title}</h4><div class="result ${type}">${content}</div>`;
+            results.appendChild(div);
+            results.scrollTop = results.scrollHeight;
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testProxyHealth() {
+            const proxyUrl = document.getElementById('proxyUrl').value;
+            
+            try {
+                addResult('🏥 Test Health Proxy', 'Sprawdzanie czy proxy server działa...');
+                
+                const response = await fetch(`${proxyUrl}/health`);
+                const result = await response.text();
+                
+                if (response.ok) {
+                    addResult('✅ Proxy Health OK', `Status: ${response.status}\nResponse: ${result}`, 'success');
+                } else {
+                    addResult('❌ Proxy Health Error', `Status: ${response.status}\nResponse: ${result}`, 'error');
+                }
+            } catch (error) {
+                addResult('❌ Proxy Health Error', `Nie można połączyć z proxy:\n${error.message}\n\nSprawdź czy serwer działa na ${proxyUrl}`, 'error');
+            }
+        }
+
+        async function testDirectAPI() {
+            const token = document.getElementById('token').value;
+            const directUrl = document.getElementById('directUrl').value;
+            
+            try {
+                addResult('🌐 Test Direct API', 'Próba bezpośredniego połączenia (spodziewany błąd CORS)...');
+                
+                const response = await fetch(`${directUrl}/territory/list`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        pagination: { page: 0, pageSize: 1 }
+                    })
+                });
+                
+                const result = await response.text();
+                addResult('🤔 Direct API Response', `Status: ${response.status}\nResponse: ${result}`, response.ok ? 'success' : 'warning');
+                
+            } catch (error) {
+                if (error.message.includes('CORS')) {
+                    addResult('✅ CORS Error (oczekiwany)', `Błąd CORS potwierdza, że potrzebujemy proxy:\n${error.message}`, 'warning');
+                } else {
+                    addResult('❌ Direct API Error', error.message, 'error');
+                }
+            }
+        }
+
+        async function testProxyAPI() {
+            const token = document.getElementById('token').value;
+            const proxyUrl = document.getElementById('proxyUrl').value;
+            
+            if (!token) {
+                addResult('❌ Error', 'Najpierw wprowadź Bearer token', 'error');
+                return;
+            }
+            
+            // Test różnych endpointów
+            const endpoints = [
+                'territory/list',
+                'territories/list', 
+                'territory',
+                'territories'
+            ];
+            
+            for (const endpoint of endpoints) {
+                try {
+                    addResult(`🔄 Test Proxy API: ${endpoint}`, `Testowanie endpoint: ${endpoint}...`);
+                    
+                    const response = await fetch(`${proxyUrl}/api/tourplanner/${endpoint}`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            pagination: { page: 0, pageSize: 1 }
+                        })
+                    });
+                    
+                    const result = await response.text();
+                    
+                    if (response.ok) {
+                        addResult(`✅ ${endpoint} - SUCCESS`, `Status: ${response.status}\nResponse: ${result}`, 'success');
+                        break; // Jeśli jeden działa, przestań testować
+                    } else {
+                        addResult(`❌ ${endpoint} - FAILED`, `Status: ${response.status}\nResponse: ${result}`, 'error');
+                    }
+                } catch (error) {
+                    addResult(`❌ ${endpoint} - ERROR`, `Network error: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        async function compareRequests() {
+            addResult('📊 Porównanie zapytań', 'Porównując działający bookmarklet z PWA...');
+            
+            const token = document.getElementById('token').value;
+            const proxyUrl = document.getElementById('proxyUrl').value;
+
+            if (!token) {
+                addResult('❌ Error', 'Najpierw wprowadź Bearer token', 'error');
+                return;
+            }
+
+            // Test bookmarklet-style request
+            try {
+                const bookmarkletResult = await fetch('https://api2.tourplanner.tdy-apps.com/territory/list', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        pagination: { page: 0, pageSize: 1 }
+                    })
+                });
+                
+                addResult('📖 Bookmarklet Style', `Status: ${bookmarkletResult.status} (blocked by CORS)`, 'warning');
+            } catch (error) {
+                addResult('📖 Bookmarklet Style', `CORS blocked (normalnie działa w bookmarklet): ${error.message}`, 'warning');
+            }
+
+            // Test PWA-style request through proxy
+            try {
+                const pwaResult = await fetch(`${proxyUrl}/api/tourplanner/territory/list`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        pagination: { page: 0, pageSize: 1 }
+                    })
+                });
+                
+                const resultText = await pwaResult.text();
+                addResult('🚀 PWA Style (przez proxy)', `Status: ${pwaResult.status}\nResponse: ${resultText}`, 
+                    pwaResult.ok ? 'success' : 'error');
+            } catch (error) {
+                addResult('🚀 PWA Style Error', error.message, 'error');
+            }
+        }
+
+        function showNetworkInstructions() {
+            addResult('📖 Instrukcje debugowania Network', `
+1. Otwórz DevTools (F12)
+2. Przejdź do zakładki Network
+3. Wykonaj test "Test Proxy API"
+4. Znajdź zapytanie do /api/tourplanner/territory/list
+5. Sprawdź:
+   - Request URL
+   - Request Headers (Authorization, Content-Type)
+   - Request Body
+   - Response Status
+   - Response Headers
+   - Response Body
+
+Porównaj z działającym bookmarkletem w konsoli.
+
+Typowe problemy:
+- 404: Błędny endpoint lub proxy nie przekazuje poprawnie
+- 401: Błędny token
+- 500: Błąd serwera proxy
+- Connection refused: Proxy server nie działa
+            `, 'warning');
+        }
+
+        // Auto-load saved values
+        window.addEventListener('load', () => {
+            const savedToken = localStorage.getItem('tp_bearer_token');
+            
+            if (savedToken) document.getElementById('token').value = savedToken;
+        });
+
+        // Auto-save values
+        document.getElementById('token').addEventListener('input', (e) => {
+            localStorage.setItem('tp_bearer_token', e.target.value);
+        });
+    </script>
+</body>
+</html>
