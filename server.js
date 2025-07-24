@@ -82,7 +82,7 @@ app.get('/health', (req, res) => {
     });
 });
 
-// Main proxy endpoint for TourPlanner API
+// Main proxy endpoint for TourPlanner API - POPRAWIONA WERSJA
 app.use('/api/tourplanner', async (req, res) => {
     try {
         // Extract the API path from the original URL
@@ -102,7 +102,47 @@ app.use('/api/tourplanner', async (req, res) => {
         console.log(`   Method: ${req.method}`);
         console.log(`   Has Auth: ${!!req.headers.authorization}`);
         
-        // Check for Bearer token
+        // ZMIANA: Special handling for auth/login - nie wymaga Bearer tokenu
+        if (apiPath === 'auth/login') {
+            console.log('🔐 Auth/login request - skipping Bearer token validation');
+            
+            const headers = {
+                'Content-Type': 'application/json',
+                'User-Agent': 'TourPlanner-PWA-Proxy/1.0',
+                'Accept': 'application/json'
+            };
+
+            // Make request to TourPlanner API
+            const response = await fetch(tourPlannerUrl, {
+                method: req.method,
+                headers: headers,
+                body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined
+            });
+
+            // Get response data
+            const contentType = response.headers.get('content-type');
+            let data;
+            
+            if (contentType && contentType.includes('application/json')) {
+                data = await response.json();
+            } else {
+                data = await response.text();
+            }
+            
+            console.log(`📈 Auth Response: ${response.status} ${response.statusText}`);
+            console.log(`📊 Auth Data preview: ${JSON.stringify(data).substring(0, 200)}...`);
+            
+            // Forward response
+            res.status(response.status);
+            if (contentType) {
+                res.set('Content-Type', contentType);
+            }
+            
+            res.json(data);
+            return; // Zakończ tutaj dla auth/login
+        }
+        
+        // Check for Bearer token for all other endpoints
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
             return res.status(401).json({ 

@@ -239,56 +239,59 @@ document.getElementById('tpEvent').addEventListener('change', (e) => {
         document.getElementById('tpFromTime').value = `${currentHour}:${currentMinute}`;
     }
 
-    async refreshToken() {
-        if (!this.config.username || !this.config.password) {
-            this.showStatus('configStatus', 'Najpierw wprowadź dane logowania!', 'error');
-            return false;
-        }
-
-        this.showStatus('configStatus', 'Pobieranie nowego tokenu...', 'warning');
-
-        try {
-            const response = await fetch('https://api2.tourplanner.tdy-apps.com/auth/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                },
-                body: JSON.stringify({
-                    username: this.config.username,
-                    password: this.config.password
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`Błąd HTTP: ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            if (data.status && data.status.success && data.data && data.data.token) {
-                this.config.bearerToken = data.data.token.uuid;
-                this.config.tokenExpires = new Date(data.data.token.expires.date);
-                
-                this.saveConfig();
-                this.updateTokenStatus();
-                
-                console.log(`✅ Nowy token pobrany! Wygasa: ${this.config.tokenExpires.toLocaleString()}`);
-                this.showStatus('configStatus', `✅ Token odświeżony! Wygasa: ${this.config.tokenExpires.toLocaleString()}`, 'success');
-                
-                // Automatycznie załaduj dane po pobraniu tokenu
-                this.loadTerritories();
-                
-                return true;
-            } else {
-                throw new Error('Niepoprawna odpowiedź API - brak tokenu');
-            }
-        } catch (error) {
-            console.error('Token refresh failed:', error);
-            this.showStatus('configStatus', `❌ Błąd pobierania tokenu: ${error.message}`, 'error');
-            return false;
-        }
+    // Poprawiona funkcja refreshToken w app.js - używa proxy server
+async refreshToken() {
+    if (!this.config.username || !this.config.password) {
+        this.showStatus('configStatus', 'Najpierw wprowadź dane logowania!', 'error');
+        return false;
     }
+
+    this.showStatus('configStatus', 'Pobieranie nowego tokenu...', 'warning');
+
+    try {
+        // ZMIANA: Używamy proxy server zamiast bezpośredniego połączenia
+        const response = await fetch(`${this.config.proxyUrl}/api/tourplanner/auth/login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer temporary-for-login' // Tymczasowy header dla proxy
+            },
+            body: JSON.stringify({
+                username: this.config.username,
+                password: this.config.password
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Błąd HTTP ${response.status}: ${errorText}`);
+        }
+
+        const data = await response.json();
+
+        if (data.status && data.status.success && data.data && data.data.token) {
+            this.config.bearerToken = data.data.token.uuid;
+            this.config.tokenExpires = new Date(data.data.token.expires.date);
+            
+            this.saveConfig();
+            this.updateTokenStatus();
+            
+            console.log(`✅ Nowy token pobrany! Wygasa: ${this.config.tokenExpires.toLocaleString()}`);
+            this.showStatus('configStatus', `✅ Token odświeżony! Wygasa: ${this.config.tokenExpires.toLocaleString()}`, 'success');
+            
+            // Automatycznie załaduj dane po pobraniu tokenu
+            this.loadTerritories();
+            
+            return true;
+        } else {
+            throw new Error('Niepoprawna odpowiedź API - brak tokenu');
+        }
+    } catch (error) {
+        console.error('Token refresh failed:', error);
+        this.showStatus('configStatus', `❌ Błąd pobierania tokenu: ${error.message}`, 'error');
+        return false;
+    }
+}
 
     async ensureValidToken() {
         if (!this.isTokenValid()) {
