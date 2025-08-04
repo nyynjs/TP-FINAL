@@ -17,58 +17,39 @@ class TourPlannerApp {
         this.init();
     }
 
-    sync init() {
-    console.log('🚀 Inicjalizacja TourPlanner PWA...');
-    
-    // Podstawowa konfiguracja (oryginalna logika)
-    this.loadConfig();
-    this.setupEventListeners();
-    this.registerServiceWorker();
-    this.setupInstallPrompt();
-    
-    // NOWE: Dodaj optimalizacje
-    this.setupActivityTracking();
-    this.setupVisibilityTracking();
-    this.setupConnectionMonitoring();
-    
-    // Auto-detect proxy URL if empty
-    if (!this.config.proxyUrl) {
-        this.config.proxyUrl = window.location.origin;
-        document.getElementById('proxyUrl').value = this.config.proxyUrl;
-    }
-    
-    this.updateTokenStatus();
-    
-    // Sprawdź połączenie internetowe
-    if (!navigator.onLine) {
-        this.showStatus('configStatus', '📴 Brak połączenia internetowego', 'error');
-        return;
-    }
-    
-    // Inteligentne ładowanie danych
-    if (this.config.username && this.config.password) {
-        if (!this.isTokenValid()) {
-            console.log('🔄 Token nieważny lub wygasł - pobieranie nowego...');
-            this.showStatus('configStatus', '🔄 Pobieranie tokenu...', 'warning');
-            
-            // Dodaj małe opóźnienie dla lepszego UX
-            setTimeout(async () => {
-                try {
-                    const refreshed = await this.retryOperation(() => this.refreshToken(), 2, 3000);
-                    if (refreshed) {
-                        this.loadTerritoriesOptimized();
-                    }
-                } catch (error) {
-                    console.error('Nie udało się pobrać tokenu:', error);
-                    this.showStatus('configStatus', '❌ Nie udało się pobrać tokenu - sprawdź dane logowania', 'error');
-                }
-            }, 500);
-        } else {
-            console.log('✅ Token ważny - ładowanie danych...');
-            this.loadTerritoriesOptimized();
+    async init() {
+        // Load saved configuration
+        this.loadConfig();
+        
+        // Set up event listeners
+        this.setupEventListeners();
+        
+        // Register service worker
+        this.registerServiceWorker();
+        
+        // Handle PWA install prompt
+        this.setupInstallPrompt();
+        
+        // Auto-detect proxy URL if empty
+        if (!this.config.proxyUrl) {
+            this.config.proxyUrl = window.location.origin;
+            document.getElementById('proxyUrl').value = this.config.proxyUrl;
+        }
+        
+        // Update token status
+        this.updateTokenStatus();
+        
+        // Auto-login if we have credentials but no valid token
+        if (this.config.username && this.config.password && !this.isTokenValid()) {
+            setTimeout(() => {
+                this.refreshToken();
+            }, 1000);
+        } else if (this.isTokenValid()) {
+            // If we have a valid token, load territories
+            console.log('Valid token found, loading territories...');
+            this.loadTerritories();
         }
     }
-}
 
     loadConfig() {
         const savedUsername = localStorage.getItem('tp_username');
@@ -1159,246 +1140,6 @@ async createAction() {
             installPrompt.style.display = 'none';
         });
     }
-
-
-
-// DODAJ te metody na końcu klasy TourPlannerApp (przed zamykającym })
-
-// 1. Sprawdzanie aktywności użytkownika
-setupActivityTracking() {
-    let lastActivity = Date.now();
-    
-    const updateActivity = () => {
-        lastActivity = Date.now();
-        localStorage.setItem('tp_last_activity', lastActivity.toString());
-    };
-    
-    ['click', 'touchstart', 'keydown', 'scroll', 'mousemove'].forEach(event => {
-        document.addEventListener(event, updateActivity, { passive: true });
-    });
-    
-    setInterval(() => {
-        this.checkTokenExpiration();
-    }, 30000);
-}
-
-// 2. Proaktywne odświeżanie tokenu
-checkTokenExpiration() {
-    if (!this.config.username || !this.config.password) return;
-    
-    const now = new Date();
-    const tokenExpires = this.config.tokenExpires;
-    
-    if (tokenExpires) {
-        const timeUntilExpiry = tokenExpires.getTime() - now.getTime();
-        const fifteenMinutes = 15 * 60 * 1000;
-        
-        if (timeUntilExpiry > 0 && timeUntilExpiry <= fifteenMinutes) {
-            console.log('🔄 Token wygaśnie za', Math.round(timeUntilExpiry / 60000), 'minut - proaktywne odświeżanie');
-            this.refreshTokenSilently();
-        }
-    }
-}
-
-// 3. Ciche odświeżanie tokenu w tle
-async refreshTokenSilently() {
-    try {
-        console.log('🔄 Ciche odświeżanie tokenu w tle...');
-        
-        const response = await fetch(`${this.config.proxyUrl}/api/tourplanner/auth/login`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer temporary-for-login'
-            },
-            body: JSON.stringify({
-                username: this.config.username,
-                password: this.config.password
-            })
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            
-            if (data.status?.success && data.data?.token) {
-                this.config.bearerToken = data.data.token.uuid;
-                this.config.tokenExpires = new Date(data.data.token.expires.date);
-                this.saveConfig();
-                this.updateTokenStatus();
-                
-                console.log('✅ Token odświeżony w tle, wygasa:', this.config.tokenExpires.toLocaleString());
-                return true;
-            }
-        }
-        
-        return false;
-    } catch (error) {
-        console.warn('⚠️ Ciche odświeżanie tokenu nie powiodło się:', error.message);
-        return false;
-    }
-}
-
-// 4. Sprawdzanie przy powrocie do aplikacji
-setupVisibilityTracking() {
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) {
-            console.log('👁️ Aplikacja ponownie widoczna - sprawdzanie tokenu...');
-            this.handleAppResume();
-        }
-    });
-    
-    window.addEventListener('focus', () => {
-        console.log('🎯 Aplikacja otrzymała focus - sprawdzanie tokenu...');
-        this.handleAppResume();
-    });
-}
-
-async handleAppResume() {
-    const lastActivity = localStorage.getItem('tp_last_activity');
-    const now = Date.now();
-    
-    if (lastActivity && (now - parseInt(lastActivity)) > 10 * 60 * 1000) {
-        console.log('⏰ Długa nieaktywność wykryta - sprawdzanie tokenu...');
-        
-        if (!this.isTokenValid()) {
-            this.showStatus('configStatus', '🔄 Sprawdzanie połączenia...', 'warning');
-            
-            const refreshed = await this.refreshTokenSilently();
-            
-            if (refreshed) {
-                this.showStatus('configStatus', '✅ Połączenie przywrócone', 'success');
-                if (!this.data.territories.length) {
-                    this.loadTerritories();
-                }
-            } else {
-                this.showStatus('configStatus', '⚠️ Sprawdź połączenie internetowe', 'warning');
-            }
-        }
-    }
-}
-
-// 5. Monitoring połączenia
-setupConnectionMonitoring() {
-    window.addEventListener('online', () => {
-        console.log('🌐 Połączenie internetowe przywrócone');
-        this.showStatus('configStatus', '🌐 Połączenie przywrócone', 'success');
-        
-        if (this.config.username && this.config.password && !this.isTokenValid()) {
-            setTimeout(() => {
-                this.refreshTokenSilently();
-            }, 2000);
-        }
-    });
-    
-    window.addEventListener('offline', () => {
-        console.log('📴 Brak połączenia internetowego');
-        this.showStatus('configStatus', '📴 Brak połączenia internetowego', 'error');
-    });
-}
-
-// 6. Sprawdzanie połączenia internetowego
-checkInternetConnection() {
-    return navigator.onLine;
-}
-
-// 7. Lokalne cache
-getCachedData(key) {
-    try {
-        const cached = localStorage.getItem(`tp_cache_${key}`);
-        if (cached) {
-            const data = JSON.parse(cached);
-            const now = Date.now();
-            
-            if (now - data.timestamp < 5 * 60 * 1000) {
-                console.log(`📦 Używam cache dla ${key}`);
-                return data.value;
-            }
-        }
-    } catch (error) {
-        console.warn('Błąd odczytu cache:', error);
-    }
-    return null;
-}
-
-setCachedData(key, value) {
-    try {
-        const cacheData = {
-            value: value,
-            timestamp: Date.now()
-        };
-        localStorage.setItem(`tp_cache_${key}`, JSON.stringify(cacheData));
-    } catch (error) {
-        console.warn('Błąd zapisu cache:', error);
-    }
-}
-
-// 8. Zoptymalizowane ładowanie terytoriów
-async loadTerritoriesOptimized() {
-    try {
-        const cached = this.getCachedData('territories');
-        if (cached && cached.length > 0) {
-            console.log('📦 Ładuję terytoria z cache');
-            this.data.territories = cached;
-            this.populateTerritories();
-            
-            setTimeout(() => {
-                this.loadTerritoriesFromApi();
-            }, 1000);
-            return;
-        }
-        
-        await this.loadTerritoriesFromApi();
-        
-    } catch (error) {
-        console.error('Failed to load territories:', error);
-        this.showStatus('configStatus', `Błąd ładowania regionów: ${error.message}`, 'error');
-    }
-}
-
-async loadTerritoriesFromApi() {
-    console.log('🌐 Ładuję terytoria z API...');
-    
-    const response = await this.apiRequest('territory/list', 'POST', {
-        pagination: { page: 0, pageSize: 100 }
-    });
-
-    let territories = [];
-    if (response.data && Array.isArray(response.data)) {
-        territories = response.data;
-    } else if (response.items && Array.isArray(response.items)) {
-        territories = response.items;
-    } else if (Array.isArray(response)) {
-        territories = response;
-    }
-
-    this.data.territories = territories;
-    this.setCachedData('territories', territories);
-    this.populateTerritories();
-    
-    console.log(`✅ Załadowano ${territories.length} terytoriów`);
-}
-
-// 9. Retry logic dla krytycznych operacji
-async retryOperation(operation, maxRetries = 3, delay = 2000) {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            return await operation();
-        } catch (error) {
-            console.warn(`Próba ${attempt}/${maxRetries} nie powiodła się:`, error.message);
-            
-            if (attempt === maxRetries) {
-                throw error;
-            }
-            
-            const waitTime = delay * Math.pow(2, attempt - 1);
-            console.log(`⏳ Czekam ${waitTime}ms przed kolejną próbą...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-        }
-    }
-}
-
-
-
 }
 
 // Initialize the app when DOM is loaded
