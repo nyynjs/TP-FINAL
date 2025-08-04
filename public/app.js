@@ -125,7 +125,7 @@ class TourPlannerApp {
         return now < expiresIn5Min;
     }
 
-    setupEventListeners() {
+setupEventListeners() {
     // Save configuration
     document.getElementById('saveConfig').addEventListener('click', () => {
         this.config.username = document.getElementById('username').value.trim();
@@ -238,74 +238,6 @@ class TourPlannerApp {
     // POPRAWKA: Wywołaj updateEndTime() PO ustawieniu czasu rozpoczęcia
     this.updateEndTime();
 }
-        // Event selection
-document.getElementById('tpEvent').addEventListener('change', (e) => {
-    const eventData = e.target.value;
-    const territoryData = document.getElementById('tpTerr').value;
-    const isVeloMode = document.getElementById('veloMode').checked;
-    
-    if (eventData && territoryData) {
-        if (isVeloMode) {
-            this.setupVeloPoint();
-        } else {
-            this.loadPoints(territoryData, eventData);
-            this.enablePointSearch();
-        }
-    } else {
-        this.clearPoints();
-        this.disablePointSearch();
-    }
-});
-
-        // Point search
-        document.getElementById('tpPointSearch').addEventListener('input', (e) => {
-            const query = e.target.value.trim();
-            if (query.length >= 2) {
-                this.searchPoints(query);
-            } else {
-                this.hidePointDropdown();
-            }
-        });
-
-        // User search
-        document.getElementById('tpUserSearch').addEventListener('input', (e) => {
-            const query = e.target.value.trim();
-            if (query.length >= 2) {
-                this.searchUsers(query);
-            } else {
-                this.hideUserDropdown();
-            }
-        });
-
-        // Time calculation
-        document.getElementById('tpFromTime').addEventListener('change', () => {
-            this.updateEndTime();
-        });
-        
-        // Initialize end time
-        this.updateEndTime();
-
-        // Form submission
-        document.getElementById('tpForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.createAction();
-        });
-
-        // Refresh data
-        document.getElementById('refreshData').addEventListener('click', () => {
-            this.refreshAllData();
-        });
-
-        // Set today's date and current time as default
-        const now = new Date();
-        const today = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0];
-        document.getElementById('tpDate').value = today;
-        
-        const currentHour = now.getHours().toString().padStart(2, '0');
-        const currentMinute = now.getMinutes().toString().padStart(2, '0');
-        document.getElementById('tpFromTime').value = `${currentHour}:${currentMinute}`;
-    }
-
     // Poprawiona funkcja refreshToken w app.js - używa proxy server
 async refreshToken() {
     if (!this.config.username || !this.config.password) {
