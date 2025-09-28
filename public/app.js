@@ -159,36 +159,34 @@ setupEventListeners() {
         this.handleModeToggle();
     });
     
-    // Traditional Trade mode toggle
-    document.getElementById('traditionalTradeMode').addEventListener('change', (e) => {
-        const isTraditionalTradeMode = e.target.checked;
-        
-        // Jeśli włączamy Traditional Trade mode, wyłącz Velo mode
-        if (isTraditionalTradeMode) {
-            document.getElementById('veloMode').checked = false;
-            // Automatycznie ustaw nazwę akcji na "_TT/DA"
-            document.getElementById('tpName').value = '_TT/DA';
-        } else {
-            // Jeśli wyłączamy Traditional Trade mode, wyczyść nazwę akcji
-            document.getElementById('tpName').value = '';
-        }
-        
-        this.handleModeToggle();
-    });
+// Traditional Trade mode toggle
+document.getElementById('traditionalTradeMode').addEventListener('change', (e) => {
+    const isTraditionalTradeMode = e.target.checked;
+    const nameInput = document.getElementById('tpName');
+    const eventSelect = document.getElementById('tpEvent');
     
-    // Territory selection
-    document.getElementById('tpTerr').addEventListener('change', (e) => {
-        const territoryData = e.target.value;
-
-        if (territoryData) {
-            this.handleModeToggle(); // Obsłuży odpowiedni tryb
-            this.loadUsers(); // Load users when territory changes
-        } else {
-            this.clearEvents();
-            this.clearPoints();
-            this.clearUsers();
-        }
-    });
+    if (isTraditionalTradeMode) {
+        // Jeśli włączamy Traditional Trade mode, wyłącz Velo mode
+        document.getElementById('veloMode').checked = false;
+        // Automatycznie ustaw nazwę akcji na "_TT/DA"
+        nameInput.value = '_TT/DA';
+    } else {
+        // Jeśli wyłączamy Traditional Trade mode, odblokuj pola
+        nameInput.value = '';
+        nameInput.disabled = false;
+        nameInput.style.backgroundColor = '';
+        nameInput.placeholder = 'Wprowadź nazwę akcji';
+        
+        eventSelect.disabled = false;
+        eventSelect.style.backgroundColor = '';
+        
+        // Wyczyść events i wróć do normalnego trybu
+        this.clearEvents();
+    }
+    
+    this.handleModeToggle();
+});
+    
     
     // Territory selection
     document.getElementById('tpTerr').addEventListener('change', (e) => {
@@ -468,27 +466,37 @@ async refreshToken() {
 
 
  // Nowa funkcja do obsługi Traditional Trade mode
-    setupTraditionalTradeMode(territoryData) {
-        console.log('Setting up Traditional Trade mode...');
-        
-        // Set up the Traditional Trade event
-        const eventSelect = document.getElementById('tpEvent');
-        eventSelect.innerHTML = '<option value="">Wybierz event...</option>';
-        
-        const traditionalTradeEventOption = document.createElement('option');
-        traditionalTradeEventOption.value = 'c3909934-7415-561b-ba9e-4fe60d4fca35|Traditional Trade';
-        traditionalTradeEventOption.textContent = 'Traditional Trade (TT/DA)';
-        eventSelect.appendChild(traditionalTradeEventOption);
-        
-        // Auto-select the Traditional Trade event
-        eventSelect.value = 'c3909934-7415-561b-ba9e-4fe60d4fca35|Traditional Trade';
-        
-        // Enable normal point selection (nie ma specjalnego punktu jak w Velo)
-        this.loadPoints(territoryData, 'c3909934-7415-561b-ba9e-4fe60d4fca35|Traditional Trade');
-        this.enablePointSearch();
-        
-        console.log('Traditional Trade mode setup complete');
-    }
+setupTraditionalTradeMode(territoryData) {
+    console.log('Setting up Traditional Trade mode...');
+    
+    // Set up the Traditional Trade event
+    const eventSelect = document.getElementById('tpEvent');
+    const nameInput = document.getElementById('tpName');
+    
+    eventSelect.innerHTML = '<option value="">Wybierz event...</option>';
+    
+    const traditionalTradeEventOption = document.createElement('option');
+    traditionalTradeEventOption.value = 'c3909934-7415-561b-ba9e-4fe60d4fca35|Traditional Trade';
+    traditionalTradeEventOption.textContent = 'Traditional Trade (TT/DA)';
+    eventSelect.appendChild(traditionalTradeEventOption);
+    
+    // Auto-select the Traditional Trade event and disable it
+    eventSelect.value = 'c3909934-7415-561b-ba9e-4fe60d4fca35|Traditional Trade';
+    eventSelect.disabled = true;
+    eventSelect.style.backgroundColor = '#f0f0f0';
+    
+    // Set and disable the name field
+    nameInput.value = '_TT/DA';
+    nameInput.disabled = true;
+    nameInput.style.backgroundColor = '#f0f0f0';
+    nameInput.placeholder = 'Nazwa Traditional Trade automatycznie ustawiona';
+    
+    // Enable normal point selection (nie ma specjalnego punktu jak w Velo)
+    this.loadPoints(territoryData, 'c3909934-7415-561b-ba9e-4fe60d4fca35|Traditional Trade');
+    this.enablePointSearch();
+    
+    console.log('Traditional Trade mode setup complete');
+}
 
 setupVeloMode(territoryData) {
     console.log('Setting up Velo mode...');
@@ -1140,6 +1148,9 @@ async createAction() {
                     console.log('15. Resetting mode checkboxes...');
 const veloEl = document.getElementById('veloMode');
 const traditionalTradeEl = document.getElementById('traditionalTradeMode');
+const nameInput = document.getElementById('tpName');        // DODAJ TO
+const eventSelect = document.getElementById('tpEvent');     // DODAJ TO
+
 if (veloEl) {
     veloEl.checked = false;
     console.log('16a. Velo checkbox reset successfully');
@@ -1149,6 +1160,22 @@ if (veloEl) {
 if (traditionalTradeEl) {
     traditionalTradeEl.checked = false;
     console.log('16b. Traditional Trade checkbox reset successfully');
+} else {
+    console.log('16b. Traditional Trade checkbox not found');
+}
+
+// Odblokuj pola po resecie - PRZENIEŚ TO POZA if/else
+if (nameInput) {
+    nameInput.disabled = false;
+    nameInput.style.backgroundColor = '';
+    nameInput.placeholder = 'Wprowadź nazwę akcji';
+}
+if (eventSelect) {
+    eventSelect.disabled = false;
+    eventSelect.style.backgroundColor = '';
+}
+
+console.log('17. Fields unlocked after reset');
 } else {
     console.log('16b. Traditional Trade checkbox not found');
 }
