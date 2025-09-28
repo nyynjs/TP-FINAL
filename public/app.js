@@ -1137,14 +1137,21 @@ async createAction() {
                     this.updateEndTime();
                     console.log('14. UpdateEndTime completed');
                     
-                    console.log('15. Resetting velo checkbox...');
-                    const veloEl = document.getElementById('veloMode');
-                    if (veloEl) {
-                        veloEl.checked = false;
-                        console.log('16. Velo checkbox reset successfully');
-                    } else {
-                        console.log('16. Velo checkbox not found');
-                    }
+                    console.log('15. Resetting mode checkboxes...');
+const veloEl = document.getElementById('veloMode');
+const traditionalTradeEl = document.getElementById('traditionalTradeMode');
+if (veloEl) {
+    veloEl.checked = false;
+    console.log('16a. Velo checkbox reset successfully');
+} else {
+    console.log('16a. Velo checkbox not found');
+}
+if (traditionalTradeEl) {
+    traditionalTradeEl.checked = false;
+    console.log('16b. Traditional Trade checkbox reset successfully');
+} else {
+    console.log('16b. Traditional Trade checkbox not found');
+}
                     
                     console.log('=== RESET DEBUG SUCCESS ===');
                 } catch (resetError) {
