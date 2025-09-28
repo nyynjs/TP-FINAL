@@ -147,46 +147,10 @@ setupEventListeners() {
         this.refreshToken();
     });
     
-// Velo mode toggle
+    // Velo mode toggle
     document.getElementById('veloMode').addEventListener('change', (e) => {
-        const isVeloMode = e.target.checked;
-        
-        // Jeśli włączamy Velo mode, wyłącz Traditional Trade mode
-        if (isVeloMode) {
-            document.getElementById('traditionalTradeMode').checked = false;
-        }
-        
-        this.handleModeToggle();
+        this.handleVeloModeToggle(e.target.checked);
     });
-    
-// Traditional Trade mode toggle
-document.getElementById('traditionalTradeMode').addEventListener('change', (e) => {
-    const isTraditionalTradeMode = e.target.checked;
-    const nameInput = document.getElementById('tpName');
-    const eventSelect = document.getElementById('tpEvent');
-    
-    if (isTraditionalTradeMode) {
-        // Jeśli włączamy Traditional Trade mode, wyłącz Velo mode
-        document.getElementById('veloMode').checked = false;
-        // Automatycznie ustaw nazwę akcji na "_TT/DA"
-        nameInput.value = '_TT/DA';
-    } else {
-        // Jeśli wyłączamy Traditional Trade mode, odblokuj pola
-        nameInput.value = '';
-        nameInput.disabled = false;
-        nameInput.style.backgroundColor = '';
-        nameInput.placeholder = 'Wprowadź nazwę akcji';
-        
-        eventSelect.disabled = false;
-        eventSelect.style.backgroundColor = '';
-        
-        // Wyczyść events i wróć do normalnego trybu
-        this.clearEvents();
-    }
-    
-    this.handleModeToggle();
-});
-    
     
     // Territory selection
     document.getElementById('tpTerr').addEventListener('change', (e) => {
@@ -336,7 +300,7 @@ async refreshToken() {
         return true;
     }
 
- async apiRequest(endpoint, method = 'POST', body = null) {
+    async apiRequest(endpoint, method = 'POST', body = null) {
         // Sprawdź czy token jest ważny przed każdym zapytaniem
         const tokenValid = await this.ensureValidToken();
         if (!tokenValid) {
@@ -349,9 +313,7 @@ async refreshToken() {
             method,
             headers: {
                 'Authorization': `Bearer ${this.config.bearerToken}`,
-                'Content-Type': 'application/json',
-                // DODANE: Wysyłanie username w nagłówku dla Discord notifications
-                'X-Username': this.config.username || 'Nieznany użytkownik'
+                'Content-Type': 'application/json'
             }
         };
 
@@ -360,7 +322,6 @@ async refreshToken() {
         }
 
         console.log(`Making API request to: ${url}`);
-        console.log(`Sending username in header: ${this.config.username}`); // Debug log
         const response = await fetch(url, options);
         
         if (!response.ok) {
@@ -369,9 +330,8 @@ async refreshToken() {
                 console.log('Otrzymano 401, odświeżanie tokenu...');
                 const refreshed = await this.refreshToken();
                 if (refreshed) {
-                    // Powtórz zapytanie z nowym tokenem i username header
+                    // Powtórz zapytanie z nowym tokenem
                     options.headers['Authorization'] = `Bearer ${this.config.bearerToken}`;
-                    options.headers['X-Username'] = this.config.username || 'Nieznany użytkownik';
                     const retryResponse = await fetch(url, options);
                     if (!retryResponse.ok) {
                         const errorText = await retryResponse.text();
@@ -436,66 +396,6 @@ async refreshToken() {
         }
         this.clearPoints();
     }
-}
-
-// Nowa funkcja do obsługi przełączania trybów
-    handleModeToggle() {
-        const territoryData = document.getElementById('tpTerr').value;
-        const isVeloMode = document.getElementById('veloMode').checked;
-        const isTraditionalTradeMode = document.getElementById('traditionalTradeMode').checked;
-        
-        if (!territoryData) {
-            this.clearEvents();
-            this.clearPoints();
-            return;
-        }
-        
-        if (isVeloMode) {
-            this.setupVeloMode(territoryData);
-        } else if (isTraditionalTradeMode) {
-            this.setupTraditionalTradeMode(territoryData);
-        } else {
-            // Normal mode - load regular events
-            this.loadEvents(territoryData);
-            this.clearPoints();
-        }
-    }
-
-
-
-
-
- // Nowa funkcja do obsługi Traditional Trade mode
-setupTraditionalTradeMode(territoryData) {
-    console.log('Setting up Traditional Trade mode...');
-    
-    // Set up the Traditional Trade event
-    const eventSelect = document.getElementById('tpEvent');
-    const nameInput = document.getElementById('tpName');
-    
-    eventSelect.innerHTML = '<option value="">Wybierz event...</option>';
-    
-    const traditionalTradeEventOption = document.createElement('option');
-    traditionalTradeEventOption.value = 'c3909934-7415-561b-ba9e-4fe60d4fca35|Traditional Trade';
-    traditionalTradeEventOption.textContent = 'Traditional Trade (TT/DA)';
-    eventSelect.appendChild(traditionalTradeEventOption);
-    
-    // Auto-select the Traditional Trade event and disable it
-    eventSelect.value = 'c3909934-7415-561b-ba9e-4fe60d4fca35|Traditional Trade';
-    eventSelect.disabled = true;
-    eventSelect.style.backgroundColor = '#f0f0f0';
-    
-    // Set and disable the name field
-    nameInput.value = '_TT/DA';
-    nameInput.disabled = true;
-    nameInput.style.backgroundColor = '#f0f0f0';
-    nameInput.placeholder = 'Nazwa Traditional Trade automatycznie ustawiona';
-    
-    // Enable normal point selection (nie ma specjalnego punktu jak w Velo)
-    this.loadPoints(territoryData, 'c3909934-7415-561b-ba9e-4fe60d4fca35|Traditional Trade');
-    this.enablePointSearch();
-    
-    console.log('Traditional Trade mode setup complete');
 }
 
 setupVeloMode(territoryData) {
@@ -1145,40 +1045,14 @@ async createAction() {
                     this.updateEndTime();
                     console.log('14. UpdateEndTime completed');
                     
-                    console.log('15. Resetting mode checkboxes...');
-const veloEl = document.getElementById('veloMode');
-const traditionalTradeEl = document.getElementById('traditionalTradeMode');
-const nameInput = document.getElementById('tpName');        // DODAJ TO
-const eventSelect = document.getElementById('tpEvent');     // DODAJ TO
-
-if (veloEl) {
-    veloEl.checked = false;
-    console.log('16a. Velo checkbox reset successfully');
-} else {
-    console.log('16a. Velo checkbox not found');
-}
-if (traditionalTradeEl) {
-    traditionalTradeEl.checked = false;
-    console.log('16b. Traditional Trade checkbox reset successfully');
-} else {
-    console.log('16b. Traditional Trade checkbox not found');
-}
-
-// Odblokuj pola po resecie - PRZENIEŚ TO POZA if/else
-if (nameInput) {
-    nameInput.disabled = false;
-    nameInput.style.backgroundColor = '';
-    nameInput.placeholder = 'Wprowadź nazwę akcji';
-}
-if (eventSelect) {
-    eventSelect.disabled = false;
-    eventSelect.style.backgroundColor = '';
-}
-
-console.log('17. Fields unlocked after reset');
-} else {
-    console.log('16b. Traditional Trade checkbox not found');
-}
+                    console.log('15. Resetting velo checkbox...');
+                    const veloEl = document.getElementById('veloMode');
+                    if (veloEl) {
+                        veloEl.checked = false;
+                        console.log('16. Velo checkbox reset successfully');
+                    } else {
+                        console.log('16. Velo checkbox not found');
+                    }
                     
                     console.log('=== RESET DEBUG SUCCESS ===');
                 } catch (resetError) {
