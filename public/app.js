@@ -184,15 +184,28 @@ document.getElementById('traditionalTradeMode').addEventListener('change', (e) =
         this.clearEvents();
     }
     
-    // Tylko wywołaj handleModeToggle jeśli region jest wybrany
-    const territoryData = document.getElementById('tpTerr').value;
-    if (territoryData) {
-        this.handleModeToggle();
-    }
+    this.handleModeToggle();
 });
     
     
+    // Territory selection
+    document.getElementById('tpTerr').addEventListener('change', (e) => {
+        const territoryData = e.target.value;
+        const isVeloMode = document.getElementById('veloMode').checked;
 
+        if (territoryData) {
+            if (isVeloMode) {
+                this.setupVeloMode(territoryData);
+            } else {
+                this.loadEvents(territoryData);
+            }
+            this.loadUsers(); // Load users when territory changes
+        } else {
+            this.clearEvents();
+            this.clearPoints();
+            this.clearUsers();
+        }
+    });
 
     // Event selection
     document.getElementById('tpEvent').addEventListener('change', (e) => {
@@ -426,28 +439,27 @@ async refreshToken() {
 }
 
 // Nowa funkcja do obsługi przełączania trybów
-handleModeToggle() {
-    const territoryData = document.getElementById('tpTerr').value;
-    const isVeloMode = document.getElementById('veloMode').checked;
-    const isTraditionalTradeMode = document.getElementById('traditionalTradeMode').checked;
-    
-    if (!territoryData) {
-        // Jeśli nie ma regionu, tylko wyczyść bez ładowania
-        this.clearEvents();
-        this.clearPoints();
-        return;
+    handleModeToggle() {
+        const territoryData = document.getElementById('tpTerr').value;
+        const isVeloMode = document.getElementById('veloMode').checked;
+        const isTraditionalTradeMode = document.getElementById('traditionalTradeMode').checked;
+        
+        if (!territoryData) {
+            this.clearEvents();
+            this.clearPoints();
+            return;
+        }
+        
+        if (isVeloMode) {
+            this.setupVeloMode(territoryData);
+        } else if (isTraditionalTradeMode) {
+            this.setupTraditionalTradeMode(territoryData);
+        } else {
+            // Normal mode - load regular events
+            this.loadEvents(territoryData);
+            this.clearPoints();
+        }
     }
-    
-    if (isVeloMode) {
-        this.setupVeloMode(territoryData);
-    } else if (isTraditionalTradeMode) {
-        this.setupTraditionalTradeMode(territoryData);
-    } else {
-        // Normal mode - load regular events
-        this.loadEvents(territoryData);
-        this.clearPoints();
-    }
-}
 
 
 
@@ -1133,11 +1145,11 @@ async createAction() {
                     this.updateEndTime();
                     console.log('14. UpdateEndTime completed');
                     
-console.log('15. Resetting mode checkboxes...');
+                    console.log('15. Resetting mode checkboxes...');
 const veloEl = document.getElementById('veloMode');
 const traditionalTradeEl = document.getElementById('traditionalTradeMode');
-const nameInput = document.getElementById('tpName');
-const eventSelect = document.getElementById('tpEvent');
+const nameInput = document.getElementById('tpName');        // DODAJ TO
+const eventSelect = document.getElementById('tpEvent');     // DODAJ TO
 
 if (veloEl) {
     veloEl.checked = false;
@@ -1145,7 +1157,6 @@ if (veloEl) {
 } else {
     console.log('16a. Velo checkbox not found');
 }
-
 if (traditionalTradeEl) {
     traditionalTradeEl.checked = false;
     console.log('16b. Traditional Trade checkbox reset successfully');
@@ -1153,7 +1164,7 @@ if (traditionalTradeEl) {
     console.log('16b. Traditional Trade checkbox not found');
 }
 
-// Odblokuj pola po resecie
+// Odblokuj pola po resecie - PRZENIEŚ TO POZA if/else
 if (nameInput) {
     nameInput.disabled = false;
     nameInput.style.backgroundColor = '';
@@ -1165,6 +1176,9 @@ if (eventSelect) {
 }
 
 console.log('17. Fields unlocked after reset');
+} else {
+    console.log('16b. Traditional Trade checkbox not found');
+}
                     
                     console.log('=== RESET DEBUG SUCCESS ===');
                 } catch (resetError) {
