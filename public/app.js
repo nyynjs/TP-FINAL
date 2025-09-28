@@ -300,7 +300,7 @@ async refreshToken() {
         return true;
     }
 
-    async apiRequest(endpoint, method = 'POST', body = null) {
+async apiRequest(endpoint, method = 'POST', body = null) {
         // Sprawdź czy token jest ważny przed każdym zapytaniem
         const tokenValid = await this.ensureValidToken();
         if (!tokenValid) {
@@ -313,7 +313,9 @@ async refreshToken() {
             method,
             headers: {
                 'Authorization': `Bearer ${this.config.bearerToken}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                // DODANE: Wysyłanie username w nagłówku dla Discord notifications
+                'X-Username': this.config.username || 'Nieznany użytkownik'
             }
         };
 
@@ -330,8 +332,9 @@ async refreshToken() {
                 console.log('Otrzymano 401, odświeżanie tokenu...');
                 const refreshed = await this.refreshToken();
                 if (refreshed) {
-                    // Powtórz zapytanie z nowym tokenem
+                    // Powtórz zapytanie z nowym tokenem i username header
                     options.headers['Authorization'] = `Bearer ${this.config.bearerToken}`;
+                    options.headers['X-Username'] = this.config.username || 'Nieznany użytkownik';
                     const retryResponse = await fetch(url, options);
                     if (!retryResponse.ok) {
                         const errorText = await retryResponse.text();
@@ -339,6 +342,14 @@ async refreshToken() {
                     }
                     return await retryResponse.json();
                 }
+            }
+            
+            const errorText = await response.text();
+            throw new Error(`API Error ${response.status}: ${errorText}`);
+        }
+
+        return await response.json();
+    }
             }
             
             const errorText = await response.text();
