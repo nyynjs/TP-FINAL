@@ -1145,11 +1145,11 @@ async createAction() {
                     this.updateEndTime();
                     console.log('14. UpdateEndTime completed');
                     
-                    console.log('15. Resetting mode checkboxes...');
+console.log('15. Resetting mode checkboxes...');
 const veloEl = document.getElementById('veloMode');
 const traditionalTradeEl = document.getElementById('traditionalTradeMode');
-const nameInput = document.getElementById('tpName');        // DODAJ TO
-const eventSelect = document.getElementById('tpEvent');     // DODAJ TO
+const nameInput = document.getElementById('tpName');
+const eventSelect = document.getElementById('tpEvent');
 
 if (veloEl) {
     veloEl.checked = false;
@@ -1157,6 +1157,7 @@ if (veloEl) {
 } else {
     console.log('16a. Velo checkbox not found');
 }
+
 if (traditionalTradeEl) {
     traditionalTradeEl.checked = false;
     console.log('16b. Traditional Trade checkbox reset successfully');
@@ -1164,7 +1165,7 @@ if (traditionalTradeEl) {
     console.log('16b. Traditional Trade checkbox not found');
 }
 
-// Odblokuj pola po resecie - PRZENIEŚ TO POZA if/else
+// Odblokuj pola po resecie
 if (nameInput) {
     nameInput.disabled = false;
     nameInput.style.backgroundColor = '';
@@ -1176,9 +1177,6 @@ if (eventSelect) {
 }
 
 console.log('17. Fields unlocked after reset');
-} else {
-    console.log('16b. Traditional Trade checkbox not found');
-}
                     
                     console.log('=== RESET DEBUG SUCCESS ===');
                 } catch (resetError) {
