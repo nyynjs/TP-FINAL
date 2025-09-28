@@ -1,4 +1,4 @@
-// server.js - TourPlanner PWA Proxy Server
+// server.js - TourPlanner PWA Proxy Server with Discord Integration
 const express = require('express');
 const cors = require('cors');
 // Using built-in fetch (Node.js 18+) or https module for older versions
@@ -55,6 +55,9 @@ function fetch(url, options = {}) {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Discord webhook URL
+const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1421928978087805021/TLWn_2zZp0Axwb5VRVkI2W73NbbECJAtPbdmjX34pnFsuJo_Fk34H9nxHsWk7Lco5fz-';
+
 // Enable CORS for all origins
 app.use(cors({
     origin: true,
@@ -72,6 +75,90 @@ app.use((req, res, next) => {
     next();
 });
 
+// Function to send Discord notification
+async function sendDiscordNotification(actionData, username) {
+    try {
+        const embed = {
+            title: "🚀 Nowa akcja utworzona!",
+            color: 0x00FF00, // Green color
+            fields: [
+                {
+                    name: "👤 Utworzona przez",
+                    value: username || "Nieznany użytkownik",
+                    inline: true
+                },
+                {
+                    name: "📝 Nazwa akcji",
+                    value: actionData.name || "Brak nazwy",
+                    inline: true
+                },
+                {
+                    name: "🆔 ID akcji",
+                    value: actionData.ident || "Brak ID",
+                    inline: true
+                },
+                {
+                    name: "🌍 Region",
+                    value: actionData.territory?.ident || "Nieznany",
+                    inline: true
+                },
+                {
+                    name: "🎯 Event",
+                    value: actionData.event?.name || "Nieznany",
+                    inline: true
+                },
+                {
+                    name: "👥 Personel",
+                    value: actionData.users?.map(user => `${user.firstname} ${user.lastname} (${user.ident})`).join(', ') || "Brak",
+                    inline: false
+                },
+                {
+                    name: "📍 Punkt",
+                    value: actionData.actionPoints?.[0]?.name || "Nieznany",
+                    inline: true
+                },
+                {
+                    name: "📅 Data",
+                    value: actionData.since?.date ? new Date(actionData.since.date).toLocaleString('pl-PL') : "Nieznana",
+                    inline: true
+                },
+                {
+                    name: "🕒 Czas trwania",
+                    value: actionData.since?.date && actionData.until?.date ? 
+                        `${new Date(actionData.since.date).toLocaleTimeString('pl-PL', {hour: '2-digit', minute: '2-digit'})} - ${new Date(actionData.until.date).toLocaleTimeString('pl-PL', {hour: '2-digit', minute: '2-digit'})}` : 
+                        "Nieznany",
+                    inline: true
+                }
+            ],
+            timestamp: new Date().toISOString(),
+            footer: {
+                text: "TourPlanner Pro"
+            }
+        };
+
+        const discordPayload = {
+            embeds: [embed]
+        };
+
+        const response = await fetch(DISCORD_WEBHOOK_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(discordPayload)
+        });
+
+        if (response.ok) {
+            console.log('✅ Discord notification sent successfully');
+        } else {
+            const errorText = await response.text();
+            console.error('❌ Failed to send Discord notification:', response.status, errorText);
+        }
+    } catch (error) {
+        console.error('❌ Discord notification error:', error.message);
+    }
+}
+
 // Health check endpoint (no token required)
 app.get('/health', (req, res) => {
     res.json({ 
@@ -82,7 +169,7 @@ app.get('/health', (req, res) => {
     });
 });
 
-// Main proxy endpoint for TourPlanner API - POPRAWIONA WERSJA
+// Main proxy endpoint for TourPlanner API - POPRAWIONA WERSJA z Discord integration
 app.use('/api/tourplanner', async (req, res) => {
     try {
         // Extract the API path from the original URL
@@ -178,6 +265,19 @@ app.use('/api/tourplanner', async (req, res) => {
         
         console.log(`📈 Response: ${response.status} ${response.statusText}`);
         console.log(`📊 Data preview: ${JSON.stringify(data).substring(0, 200)}...`);
+        
+        // NOWE: Discord notification for successful action creation
+        if (apiPath === 'action/create' && response.ok && data?.status?.success) {
+            console.log('🎯 Action created successfully, sending Discord notification...');
+            
+            // Extract username from request headers (będzie dodane przez frontend)
+            const username = req.headers['x-username'] || 'Nieznany użytkownik';
+            
+            // Send Discord notification in background (don't wait for it)
+            setImmediate(() => {
+                sendDiscordNotification(data.data || req.body.action, username);
+            });
+        }
         
         // Special debugging for territory/list
         if (apiPath.includes('territory/list')) {
@@ -321,6 +421,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🔗 API proxy available at: http://localhost:${PORT}/api/tourplanner/`);
     console.log(`🏥 Health check: http://localhost:${PORT}/health`);
     console.log(`🐛 Debug endpoint: http://localhost:${PORT}/debug/`);
+    console.log(`📢 Discord notifications enabled`);
     
     if (process.env.NODE_ENV === 'production') {
         console.log(`🌍 Production mode - CORS enabled for all origins`);
