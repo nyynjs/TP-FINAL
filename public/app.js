@@ -188,24 +188,7 @@ document.getElementById('traditionalTradeMode').addEventListener('change', (e) =
 });
     
     
-    // Territory selection
-    document.getElementById('tpTerr').addEventListener('change', (e) => {
-        const territoryData = e.target.value;
-        const isVeloMode = document.getElementById('veloMode').checked;
 
-        if (territoryData) {
-            if (isVeloMode) {
-                this.setupVeloMode(territoryData);
-            } else {
-                this.loadEvents(territoryData);
-            }
-            this.loadUsers(); // Load users when territory changes
-        } else {
-            this.clearEvents();
-            this.clearPoints();
-            this.clearUsers();
-        }
-    });
 
     // Event selection
     document.getElementById('tpEvent').addEventListener('change', (e) => {
