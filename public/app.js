@@ -147,9 +147,47 @@ setupEventListeners() {
         this.refreshToken();
     });
     
-    // Velo mode toggle
+// Velo mode toggle
     document.getElementById('veloMode').addEventListener('change', (e) => {
-        this.handleVeloModeToggle(e.target.checked);
+        const isVeloMode = e.target.checked;
+        
+        // Jeśli włączamy Velo mode, wyłącz Traditional Trade mode
+        if (isVeloMode) {
+            document.getElementById('traditionalTradeMode').checked = false;
+        }
+        
+        this.handleModeToggle();
+    });
+    
+    // Traditional Trade mode toggle
+    document.getElementById('traditionalTradeMode').addEventListener('change', (e) => {
+        const isTraditionalTradeMode = e.target.checked;
+        
+        // Jeśli włączamy Traditional Trade mode, wyłącz Velo mode
+        if (isTraditionalTradeMode) {
+            document.getElementById('veloMode').checked = false;
+            // Automatycznie ustaw nazwę akcji na "_TT/DA"
+            document.getElementById('tpName').value = '_TT/DA';
+        } else {
+            // Jeśli wyłączamy Traditional Trade mode, wyczyść nazwę akcji
+            document.getElementById('tpName').value = '';
+        }
+        
+        this.handleModeToggle();
+    });
+    
+    // Territory selection
+    document.getElementById('tpTerr').addEventListener('change', (e) => {
+        const territoryData = e.target.value;
+
+        if (territoryData) {
+            this.handleModeToggle(); // Obsłuży odpowiedni tryb
+            this.loadUsers(); // Load users when territory changes
+        } else {
+            this.clearEvents();
+            this.clearPoints();
+            this.clearUsers();
+        }
     });
     
     // Territory selection
@@ -401,6 +439,56 @@ async refreshToken() {
         this.clearPoints();
     }
 }
+
+// Nowa funkcja do obsługi przełączania trybów
+    handleModeToggle() {
+        const territoryData = document.getElementById('tpTerr').value;
+        const isVeloMode = document.getElementById('veloMode').checked;
+        const isTraditionalTradeMode = document.getElementById('traditionalTradeMode').checked;
+        
+        if (!territoryData) {
+            this.clearEvents();
+            this.clearPoints();
+            return;
+        }
+        
+        if (isVeloMode) {
+            this.setupVeloMode(territoryData);
+        } else if (isTraditionalTradeMode) {
+            this.setupTraditionalTradeMode(territoryData);
+        } else {
+            // Normal mode - load regular events
+            this.loadEvents(territoryData);
+            this.clearPoints();
+        }
+    }
+
+
+
+
+
+ // Nowa funkcja do obsługi Traditional Trade mode
+    setupTraditionalTradeMode(territoryData) {
+        console.log('Setting up Traditional Trade mode...');
+        
+        // Set up the Traditional Trade event
+        const eventSelect = document.getElementById('tpEvent');
+        eventSelect.innerHTML = '<option value="">Wybierz event...</option>';
+        
+        const traditionalTradeEventOption = document.createElement('option');
+        traditionalTradeEventOption.value = 'c3909934-7415-561b-ba9e-4fe60d4fca35|Traditional Trade';
+        traditionalTradeEventOption.textContent = 'Traditional Trade (TT/DA)';
+        eventSelect.appendChild(traditionalTradeEventOption);
+        
+        // Auto-select the Traditional Trade event
+        eventSelect.value = 'c3909934-7415-561b-ba9e-4fe60d4fca35|Traditional Trade';
+        
+        // Enable normal point selection (nie ma specjalnego punktu jak w Velo)
+        this.loadPoints(territoryData, 'c3909934-7415-561b-ba9e-4fe60d4fca35|Traditional Trade');
+        this.enablePointSearch();
+        
+        console.log('Traditional Trade mode setup complete');
+    }
 
 setupVeloMode(territoryData) {
     console.log('Setting up Velo mode...');
