@@ -300,7 +300,7 @@ async refreshToken() {
         return true;
     }
 
-async apiRequest(endpoint, method = 'POST', body = null) {
+ async apiRequest(endpoint, method = 'POST', body = null) {
         // Sprawdź czy token jest ważny przed każdym zapytaniem
         const tokenValid = await this.ensureValidToken();
         if (!tokenValid) {
@@ -324,6 +324,7 @@ async apiRequest(endpoint, method = 'POST', body = null) {
         }
 
         console.log(`Making API request to: ${url}`);
+        console.log(`Sending username in header: ${this.config.username}`); // Debug log
         const response = await fetch(url, options);
         
         if (!response.ok) {
@@ -342,14 +343,6 @@ async apiRequest(endpoint, method = 'POST', body = null) {
                     }
                     return await retryResponse.json();
                 }
-            }
-            
-            const errorText = await response.text();
-            throw new Error(`API Error ${response.status}: ${errorText}`);
-        }
-
-        return await response.json();
-    }
             }
             
             const errorText = await response.text();
