@@ -184,7 +184,11 @@ document.getElementById('traditionalTradeMode').addEventListener('change', (e) =
         this.clearEvents();
     }
     
-    this.handleModeToggle();
+    // Tylko wywołaj handleModeToggle jeśli region jest wybrany
+    const territoryData = document.getElementById('tpTerr').value;
+    if (territoryData) {
+        this.handleModeToggle();
+    }
 });
     
     
@@ -422,27 +426,28 @@ async refreshToken() {
 }
 
 // Nowa funkcja do obsługi przełączania trybów
-    handleModeToggle() {
-        const territoryData = document.getElementById('tpTerr').value;
-        const isVeloMode = document.getElementById('veloMode').checked;
-        const isTraditionalTradeMode = document.getElementById('traditionalTradeMode').checked;
-        
-        if (!territoryData) {
-            this.clearEvents();
-            this.clearPoints();
-            return;
-        }
-        
-        if (isVeloMode) {
-            this.setupVeloMode(territoryData);
-        } else if (isTraditionalTradeMode) {
-            this.setupTraditionalTradeMode(territoryData);
-        } else {
-            // Normal mode - load regular events
-            this.loadEvents(territoryData);
-            this.clearPoints();
-        }
+handleModeToggle() {
+    const territoryData = document.getElementById('tpTerr').value;
+    const isVeloMode = document.getElementById('veloMode').checked;
+    const isTraditionalTradeMode = document.getElementById('traditionalTradeMode').checked;
+    
+    if (!territoryData) {
+        // Jeśli nie ma regionu, tylko wyczyść bez ładowania
+        this.clearEvents();
+        this.clearPoints();
+        return;
     }
+    
+    if (isVeloMode) {
+        this.setupVeloMode(territoryData);
+    } else if (isTraditionalTradeMode) {
+        this.setupTraditionalTradeMode(territoryData);
+    } else {
+        // Normal mode - load regular events
+        this.loadEvents(territoryData);
+        this.clearPoints();
+    }
+}
 
 
 
