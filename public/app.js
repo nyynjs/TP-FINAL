@@ -1,1147 +1,777 @@
-// TourPlanner PWA Application Logic
-class TourPlannerApp {
-    constructor() {
-        this.config = {
-            username: '',
-            password: '',
-            bearerToken: '',
-            proxyUrl: '',
-            tokenExpires: null
-        };
-        this.data = {
-            territories: [],
-            events: [],
-            points: [],
-            users: []
-        };
-        this.init();
-    }
-
-    async init() {
-        // Load saved configuration
-        this.loadConfig();
-        
-        // Set up event listeners
-        this.setupEventListeners();
-        
-        // Register service worker
-        this.registerServiceWorker();
-        
-        // Handle PWA install prompt
-        this.setupInstallPrompt();
-        
-        // Auto-detect proxy URL if empty
-        if (!this.config.proxyUrl) {
-            this.config.proxyUrl = window.location.origin;
-            document.getElementById('proxyUrl').value = this.config.proxyUrl;
-        }
-        
-        // Update token status
-        this.updateTokenStatus();
-        
-        // Auto-login if we have credentials but no valid token
-        if (this.config.username && this.config.password && !this.isTokenValid()) {
-            setTimeout(() => {
-                this.refreshToken();
-            }, 1000);
-        } else if (this.isTokenValid()) {
-            // If we have a valid token, load territories
-            console.log('Valid token found, loading territories...');
-            this.loadTerritories();
-        }
-    }
-
-    loadConfig() {
-        const savedUsername = localStorage.getItem('tp_username');
-        const savedPassword = localStorage.getItem('tp_password');
-        const savedToken = localStorage.getItem('tp_bearer_token');
-        const savedTokenExpires = localStorage.getItem('tp_token_expires');
-        const savedProxy = localStorage.getItem('tp_proxy_url');
-        
-        if (savedUsername) {
-            this.config.username = savedUsername;
-            document.getElementById('username').value = savedUsername;
-        }
-        
-        if (savedPassword) {
-            this.config.password = savedPassword;
-            document.getElementById('password').value = savedPassword;
-        }
-        
-        if (savedToken) {
-            this.config.bearerToken = savedToken;
-        }
-        
-        if (savedTokenExpires) {
-            this.config.tokenExpires = new Date(savedTokenExpires);
-        }
-        
-        if (savedProxy) {
-            this.config.proxyUrl = savedProxy;
-            document.getElementById('proxyUrl').value = savedProxy;
-        } else {
-            this.config.proxyUrl = window.location.origin;
-            document.getElementById('proxyUrl').value = this.config.proxyUrl;
-        }
-    }
-
-    saveConfig() {
-        localStorage.setItem('tp_username', this.config.username);
-        localStorage.setItem('tp_password', this.config.password);
-        localStorage.setItem('tp_bearer_token', this.config.bearerToken);
-        localStorage.setItem('tp_token_expires', this.config.tokenExpires?.toISOString() || '');
-        localStorage.setItem('tp_proxy_url', this.config.proxyUrl);
-    }
-
-    updateTokenStatus() {
-        const statusEl = document.getElementById('tokenStatus');
-        const actionForm = document.getElementById('actionForm');
-        
-        if (this.config.username && this.config.password) {
-            const tokenValid = this.config.bearerToken && this.isTokenValid();
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TourPlanner Pro</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="TourPlanner Pro">
+    <link rel="apple-touch-icon" href="icon.png">
+    <style>
+        :root {
+            --primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary-solid: #667eea;
+            --primary-dark: #5a67d8;
+            --secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --success: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --warning: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            --error: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
             
-            if (tokenValid) {
-                statusEl.className = 'token-status token-valid';
-                statusEl.textContent = `✅ Zalogowany jako: ${this.config.username}`;
-                actionForm.classList.remove('hidden');
-            } else {
-                statusEl.className = 'token-status token-warning';
-                statusEl.textContent = `🔄 Dane logowania zapisane - pobieranie tokenu...`;
-                actionForm.classList.add('hidden');
-                // Automatycznie pobierz nowy token
-                this.refreshToken();
-            }
-        } else {
-            statusEl.className = 'token-status token-invalid';
-            statusEl.textContent = '❌ Wprowadź dane logowania';
-            actionForm.classList.add('hidden');
-        }
-    }
-
-    isTokenValid() {
-        if (!this.config.tokenExpires) return false;
-        const now = new Date();
-        const expiresIn5Min = new Date(this.config.tokenExpires.getTime() - 5 * 60 * 1000);
-        return now < expiresIn5Min;
-    }
-
-setupEventListeners() {
-    // Save configuration
-    document.getElementById('saveConfig').addEventListener('click', () => {
-        this.config.username = document.getElementById('username').value.trim();
-        this.config.password = document.getElementById('password').value.trim();
-        this.config.proxyUrl = document.getElementById('proxyUrl').value.trim() || window.location.origin;
-        
-        this.saveConfig();
-        this.updateTokenStatus();
-        this.showStatus('configStatus', 'Konfiguracja zapisana!', 'success');
-    });
-
-    // Test connection
-    document.getElementById('testConnection').addEventListener('click', () => {
-        this.testConnection();
-    });
-
-    // Refresh token manually
-    document.getElementById('refreshToken').addEventListener('click', () => {
-        this.refreshToken();
-    });
-    
-    // Velo mode toggle
-    document.getElementById('veloMode').addEventListener('change', (e) => {
-        this.handleVeloModeToggle(e.target.checked);
-    });
-    
-    // Territory selection
-    document.getElementById('tpTerr').addEventListener('change', (e) => {
-        const territoryData = e.target.value;
-        const isVeloMode = document.getElementById('veloMode').checked;
-
-        if (territoryData) {
-            if (isVeloMode) {
-                this.setupVeloMode(territoryData);
-            } else {
-                this.loadEvents(territoryData);
-            }
-            this.loadUsers(); // Load users when territory changes
-        } else {
-            this.clearEvents();
-            this.clearPoints();
-            this.clearUsers();
-        }
-    });
-
-    // Event selection
-    document.getElementById('tpEvent').addEventListener('change', (e) => {
-        const eventData = e.target.value;
-        const territoryData = document.getElementById('tpTerr').value;
-        const isVeloMode = document.getElementById('veloMode').checked;
-        
-        if (eventData && territoryData) {
-            if (isVeloMode) {
-                this.setupVeloPoint();
-            } else {
-                this.loadPoints(territoryData, eventData);
-                this.enablePointSearch();
-            }
-        } else {
-            this.clearPoints();
-            this.disablePointSearch();
-        }
-    });
-
-    // Point search
-    document.getElementById('tpPointSearch').addEventListener('input', (e) => {
-        const query = e.target.value.trim();
-        if (query.length >= 2) {
-            this.searchPoints(query);
-        } else {
-            this.hidePointDropdown();
-        }
-    });
-
-    // User search
-    document.getElementById('tpUserSearch').addEventListener('input', (e) => {
-        const query = e.target.value.trim();
-        if (query.length >= 2) {
-            this.searchUsers(query);
-        } else {
-            this.hideUserDropdown();
-        }
-    });
-
-    // Time calculation
-    document.getElementById('tpFromTime').addEventListener('change', () => {
-        this.updateEndTime();
-    });
-
-    // Form submission
-    document.getElementById('tpForm').addEventListener('submit', (e) => {
-        e.preventDefault();
-        this.createAction();
-    });
-
-    // Refresh data
-    document.getElementById('refreshData').addEventListener('click', () => {
-        this.refreshAllData();
-    });
-
-    // Set today's date and current time as default
-    const now = new Date();
-    const today = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0];
-    document.getElementById('tpDate').value = today;
-    
-    const currentHour = now.getHours().toString().padStart(2, '0');
-    const currentMinute = now.getMinutes().toString().padStart(2, '0');
-    document.getElementById('tpFromTime').value = `${currentHour}:${currentMinute}`;
-    
-    // POPRAWKA: Wywołaj updateEndTime() PO ustawieniu czasu rozpoczęcia
-    this.updateEndTime();
-}
-    // Poprawiona funkcja refreshToken w app.js - używa proxy server
-async refreshToken() {
-    if (!this.config.username || !this.config.password) {
-        this.showStatus('configStatus', 'Najpierw wprowadź dane logowania!', 'error');
-        return false;
-    }
-
-    this.showStatus('configStatus', 'Pobieranie nowego tokenu...', 'warning');
-
-    try {
-        // ZMIANA: Używamy proxy server zamiast bezpośredniego połączenia
-        const response = await fetch(`${this.config.proxyUrl}/api/tourplanner/auth/login`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer temporary-for-login' // Tymczasowy header dla proxy
-            },
-            body: JSON.stringify({
-                username: this.config.username,
-                password: this.config.password
-            })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Błąd HTTP ${response.status}: ${errorText}`);
-        }
-
-        const data = await response.json();
-
-        if (data.status && data.status.success && data.data && data.data.token) {
-            this.config.bearerToken = data.data.token.uuid;
-            this.config.tokenExpires = new Date(data.data.token.expires.date);
+            --bg-primary: #0f0f23;
+            --bg-secondary: #1a1a2e;
+            --bg-card: rgba(255, 255, 255, 0.05);
+            --bg-glass: rgba(255, 255, 255, 0.1);
             
-            this.saveConfig();
-            this.updateTokenStatus();
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.5);
             
-            console.log(`✅ Nowy token pobrany! Wygasa: ${this.config.tokenExpires.toLocaleString()}`);
-            this.showStatus('configStatus', `✅ Token odświeżony! Wygasa: ${this.config.tokenExpires.toLocaleString()}`, 'success');
+            --border: rgba(255, 255, 255, 0.1);
+            --border-hover: rgba(255, 255, 255, 0.2);
             
-            // Automatycznie załaduj dane po pobraniu tokenu
-            this.loadTerritories();
-            
-            return true;
-        } else {
-            throw new Error('Niepoprawna odpowiedź API - brak tokenu');
-        }
-    } catch (error) {
-        console.error('Token refresh failed:', error);
-        this.showStatus('configStatus', `❌ Błąd pobierania tokenu: ${error.message}`, 'error');
-        return false;
-    }
-}
-
-    async ensureValidToken() {
-        if (!this.isTokenValid()) {
-            console.log('Token wygasł lub nie istnieje, pobieranie nowego...');
-            return await this.refreshToken();
-        }
-        return true;
-    }
-
-    async apiRequest(endpoint, method = 'POST', body = null) {
-        // Sprawdź czy token jest ważny przed każdym zapytaniem
-        const tokenValid = await this.ensureValidToken();
-        if (!tokenValid) {
-            throw new Error('Nie można pobrać ważnego tokenu');
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.4);
+            --glow: 0 0 20px rgba(102, 126, 234, 0.3);
         }
 
-        const url = `${this.config.proxyUrl}/api/tourplanner/${endpoint}`;
-        
-        const options = {
-            method,
-            headers: {
-                'Authorization': `Bearer ${this.config.bearerToken}`,
-                'Content-Type': 'application/json'
-            }
-        };
-
-        if (body && method !== 'GET') {
-            options.body = JSON.stringify(body);
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
-        console.log(`Making API request to: ${url}`);
-        const response = await fetch(url, options);
-        
-        if (!response.ok) {
-            // Jeśli błąd 401, spróbuj odświeżyć token i powtórzyć zapytanie
-            if (response.status === 401) {
-                console.log('Otrzymano 401, odświeżanie tokenu...');
-                const refreshed = await this.refreshToken();
-                if (refreshed) {
-                    // Powtórz zapytanie z nowym tokenem
-                    options.headers['Authorization'] = `Bearer ${this.config.bearerToken}`;
-                    const retryResponse = await fetch(url, options);
-                    if (!retryResponse.ok) {
-                        const errorText = await retryResponse.text();
-                        throw new Error(`API Error ${retryResponse.status}: ${errorText}`);
-                    }
-                    return await retryResponse.json();
-                }
-            }
-            
-            const errorText = await response.text();
-            throw new Error(`API Error ${response.status}: ${errorText}`);
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
         }
 
-        return await response.json();
-    }
-
-    async testConnection() {
-        if (!this.config.username || !this.config.password) {
-            this.showStatus('configStatus', 'Najpierw wprowadź dane logowania!', 'error');
-            return;
+        /* Animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(102, 126, 234, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(118, 75, 162, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(240, 147, 251, 0.05) 0%, transparent 50%);
+            animation: float 20s ease-in-out infinite;
+            pointer-events: none;
+            z-index: -1;
         }
 
-        this.showStatus('configStatus', 'Testowanie połączenia...', 'warning');
-
-        try {
-            // Najpierw pobierz token
-            const tokenRefreshed = await this.refreshToken();
-            if (!tokenRefreshed) {
-                return;
-            }
-
-            // Potem przetestuj API
-            const testData = await this.apiRequest('territory/list', 'POST', {
-                pagination: { page: 0, pageSize: 1 }
-            });
-
-            if (testData && (testData.data || testData.length >= 0)) {
-                this.showStatus('configStatus', '✅ Połączenie działa poprawnie!', 'success');
-            } else {
-                this.showStatus('configStatus', '⚠️ Połączenie działa, ale otrzymano nieoczekiwane dane', 'warning');
-            }
-        } catch (error) {
-            console.error('Connection test failed:', error);
-            this.showStatus('configStatus', `❌ Błąd połączenia: ${error.message}`, 'error');
-        }
-    }
-
-    handleVeloModeToggle(isVeloMode) {
-    const territoryData = document.getElementById('tpTerr').value;
-    
-    if (isVeloMode) {
-        // Velo mode - setup special event and point
-        if (territoryData) {
-            this.setupVeloMode(territoryData);
-        }
-    } else {
-        // Normal mode - load regular events
-        if (territoryData) {
-            this.loadEvents(territoryData);
-        } else {
-            this.clearEvents();
-        }
-        this.clearPoints();
-    }
-}
-
-setupVeloMode(territoryData) {
-    console.log('Setting up Velo mode...');
-    
-    // Set up the Unconvencional event
-    const eventSelect = document.getElementById('tpEvent');
-    eventSelect.innerHTML = '<option value="">Wybierz event...</option>';
-    
-    const veloEventOption = document.createElement('option');
-    veloEventOption.value = 'f6ab5b6c-8855-11ed-bb12-065ed9e1cfca|Unconvencional';
-    veloEventOption.textContent = 'Unconvencional (Velo)';
-    eventSelect.appendChild(veloEventOption);
-    
-    // Auto-select the Unconvencional event
-    eventSelect.value = 'f6ab5b6c-8855-11ed-bb12-065ed9e1cfca|Unconvencional';
-    
-    // Setup the Velo point
-    this.setupVeloPoint();
-}
-
-setupVeloPoint() {
-    console.log('Setting up Velo point...');
-    
-    // Define the Velo point data
-    const veloPoint = {
-        uuid: "cdcea488-66f4-5ad3-acee-0dc4739e68b9",
-        ident: "Unconvencional_R409D2S1",
-        name: "Unconvencional_R409D2S1",
-        address: {
-            streetAddress: "",
-            streetNumber: null,
-            cityName: "",
-            postalCode: null,
-            geoLat: "0.00000000",
-            geoLng: "0.00000000"
-        }
-    };
-    
-    // Set the point in the UI
-    const pointSearchInput = document.getElementById('tpPointSearch');
-    const pointHiddenInput = document.getElementById('tpPoint');
-    
-    pointSearchInput.value = `${veloPoint.ident} - ${veloPoint.name} (Velo)`;
-    pointSearchInput.disabled = true;
-    pointSearchInput.placeholder = 'Punkt Velo automatycznie ustawiony';
-    
-    pointHiddenInput.value = `${veloPoint.uuid}|${veloPoint.ident}|${veloPoint.name}|${JSON.stringify(veloPoint.address)}`;
-    
-    console.log('Velo point setup complete');
-}
-
-    async loadTerritories() {
-    try {
-        console.log('LOADTERRITORIES: Starting...');
-        const response = await this.apiRequest('territory/list', 'POST', {
-            pagination: { page: 0, pageSize: 100 }
-        });
-
-        console.log('LOADTERRITORIES: Full response:', JSON.stringify(response, null, 2));
-        console.log('LOADTERRITORIES: Response type:', typeof response);
-        console.log('LOADTERRITORIES: Response keys:', Object.keys(response || {}));
-        
-        // Obsługa różnych struktur odpowiedzi
-        let territories = [];
-        if (response.data && Array.isArray(response.data)) {
-            territories = response.data;
-            console.log('LOADTERRITORIES: Using response.data');
-        } else if (response.items && Array.isArray(response.items)) {
-            territories = response.items;
-            console.log('LOADTERRITORIES: Using response.items');
-        } else if (Array.isArray(response)) {
-            territories = response;
-            console.log('LOADTERRITORIES: Using response directly');
-        } else {
-            console.error('LOADTERRITORIES: Unexpected response structure:', response);
-            territories = [];
+        @keyframes float {
+            0%, 100% { transform: translate(0px, 0px) rotate(0deg); }
+            33% { transform: translate(30px, -30px) rotate(120deg); }
+            66% { transform: translate(-20px, 20px) rotate(240deg); }
         }
 
-        console.log('LOADTERRITORIES: Extracted territories count:', territories.length);
-        console.log('LOADTERRITORIES: First territory:', JSON.stringify(territories[0], null, 2));
-        
-        this.data.territories = territories;
-        console.log('LOADTERRITORIES: Calling populateTerritories...');
-        this.populateTerritories();
-        console.log('LOADTERRITORIES: Done');
-        
-    } catch (error) {
-        console.error('LOADTERRITORIES: Failed:', error);
-        this.showStatus('configStatus', `Błąd ładowania regionów: ${error.message}`, 'error');
-    }
-}
-
-populateTerritories() {
-    console.log('POPULATE: Starting with', this.data.territories.length, 'territories');
-    console.log('POPULATE: First territory structure:', JSON.stringify(this.data.territories[0], null, 2));
-    
-    const select = document.getElementById('tpTerr');
-    console.log('POPULATE: Found select element:', !!select);
-    select.innerHTML = '<option value="">Wybierz region...</option>';
-    
-    this.data.territories.forEach((territory, i) => {
-        console.log(`POPULATE: Processing territory ${i}:`, territory);
-        
-        // Sprawdź różne możliwe struktury danych
-        let territoryName = territory.ident || territory.name || territory.title || `Territory ${i + 1}`;
-        let territoryUuid = territory.uuid || territory.id || '';
-        
-        console.log(`POPULATE: Territory ${i} - UUID: ${territoryUuid}, Name: ${territoryName}`);
-        
-        const option = document.createElement('option');
-        option.value = `${territoryUuid}|${territoryName}`;
-        option.textContent = territoryName;
-        select.appendChild(option);
-    });
-    
-    console.log('POPULATE: Done, select has', select.children.length, 'options');
-}
-
-    async loadEvents(territoryData) {
-        try {
-            console.log(`Loading events for territory: ${territoryData}`);
-            const response = await this.apiRequest('event/list', 'POST', {
-                pagination: { page: 0, pageSize: 500 }
-            });
-
-            console.log('Events response:', response);
-            console.log('Events response type:', typeof response);
-            console.log('Events response keys:', Object.keys(response || {}));
-            
-            let events = [];
-            if (response.data && Array.isArray(response.data)) {
-                events = response.data;
-                console.log('Using response.data, first event:', events[0]);
-            } else if (response.items && Array.isArray(response.items)) {
-                events = response.items;
-                console.log('Using response.items, first event:', events[0]);
-            } else if (Array.isArray(response)) {
-                events = response;
-                console.log('Using response directly, first event:', events[0]);
-            } else {
-                console.error('Unexpected events response structure:', response);
-            }
-
-            this.data.events = events;
-            this.populateEvents();
-            
-        } catch (error) {
-            console.error('Failed to load events:', error);
-            this.showStatus('configStatus', `Błąd ładowania eventów: ${error.message}`, 'error');
-        }
-    }
-
-    populateEvents() {
-        const select = document.getElementById('tpEvent');
-        select.innerHTML = '<option value="">Wybierz event...</option>';
-        
-        this.data.events.forEach(event => {
-            const option = document.createElement('option');
-            option.value = `${event.uuid}|${event.name}`;
-            option.textContent = event.name;
-            select.appendChild(option);
-        });
-    }
-
-    async loadPoints(territoryData, eventData) {
-        if (!territoryData || !eventData) {
-            this.data.points = [];
-            return;
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
         }
 
-        try {
-            const [territoryUuid] = territoryData.split('|');
-            const [eventUuid] = eventData.split('|');
-            
-            console.log(`Loading points for territory: ${territoryUuid}, event: ${eventUuid}`);
-            const response = await this.apiRequest('point/list', 'POST', {
-                event: { uuid: eventUuid },
-                territory: { uuid: territoryUuid },
-                pagination: { page: 0, pageSize: 1000 }
-            });
+        /* Header */
+        .header {
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+        }
 
-            console.log('Points response:', response);
-            console.log('Points response type:', typeof response);
-            console.log('Points response keys:', Object.keys(response || {}));
-            
-            let points = [];
-            if (response.data && Array.isArray(response.data)) {
-                points = response.data;
-                console.log('Using response.data, first point:', points[0]);
-            } else if (response.items && Array.isArray(response.items)) {
-                points = response.items;
-                console.log('Using response.items, first point:', points[0]);
-            } else if (Array.isArray(response)) {
-                points = response;
-                console.log('Using response directly, first point:', points[0]);
-            } else {
-                console.error('Unexpected points response structure:', response);
-            }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--primary);
+            animation: shimmer 2s linear infinite;
+        }
 
-            this.data.points = points;
-            
-            const input = document.getElementById('tpPointSearch');
-            if (points.length > 0) {
-                input.placeholder = `Szukaj punktu... (${points.length} dostępnych)`;
-                input.disabled = false;
-            } else {
-                input.placeholder = 'Brak punktów dla tej kombinacji';
-                input.disabled = true;
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .header h1 {
+            font-size: clamp(28px, 5vw, 36px);
+            font-weight: 800;
+            background: var(--primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+            letter-spacing: -1px;
+        }
+
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        /* Install prompt */
+        .install-prompt {
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: none;
+            align-items: center;
+            gap: 15px;
+            animation: slideDown 0.5s ease;
+        }
+
+        @keyframes slideDown {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .install-prompt .icon {
+            font-size: 24px;
+            filter: drop-shadow(0 0 10px rgba(102, 126, 234, 0.5));
+        }
+
+        .install-prompt .text {
+            flex: 1;
+            font-weight: 500;
+        }
+
+        /* Glassmorphism cards */
+        .glass-card {
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .glass-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+        }
+
+        .glass-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--border-hover);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 25px;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .card-header .icon {
+            font-size: 24px;
+            background: var(--primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(0 0 10px rgba(102, 126, 234, 0.3));
+        }
+
+        /* Form elements */
+        .form-group {
+            margin-bottom: 24px;
+            position: relative;
+        }
+
+        .form-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: var(--text-primary);
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-control, select {
+            width: 100%;
+            padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            font-size: 16px;
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .form-control:focus, select:focus {
+            outline: none;
+            border-color: var(--primary-solid);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+            transform: translateY(-1px);
+        }
+
+        .form-control:disabled, select:disabled {
+            background: rgba(255, 255, 255, 0.02);
+            color: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        .form-control::placeholder {
+            color: var(--text-muted);
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px 28px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            min-height: 56px;
+            gap: 10px;
+            position: relative;
+            overflow: hidden;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.6s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: var(--border-hover);
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            color: var(--bg-primary);
+        }
+
+        .btn:disabled {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-block {
+            width: 100%;
+            margin-bottom: 16px;
+        }
+
+        /* Status indicators */
+        .status {
+            padding: 16px 20px;
+            border-radius: 12px;
+            font-weight: 600;
+            text-align: center;
+            margin: 20px 0;
+            display: none;
+            backdrop-filter: blur(20px);
+            border: 1px solid;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(-20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .status.success {
+            background: rgba(79, 172, 254, 0.1);
+            color: #4facfe;
+            border-color: rgba(79, 172, 254, 0.3);
+        }
+
+        .status.error {
+            background: rgba(250, 112, 154, 0.1);
+            color: #fa709a;
+            border-color: rgba(250, 112, 154, 0.3);
+        }
+
+        .status.warning {
+            background: rgba(67, 233, 123, 0.1);
+            color: #43e97b;
+            border-color: rgba(67, 233, 123, 0.3);
+        }
+
+        .token-status {
+            padding: 16px 20px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 25px;
+            backdrop-filter: blur(20px);
+            border: 1px solid;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .token-valid {
+            background: rgba(79, 172, 254, 0.15);
+            color: #4facfe;
+            border-color: rgba(79, 172, 254, 0.3);
+            box-shadow: 0 4px 20px rgba(79, 172, 254, 0.1);
+        }
+
+        .token-invalid {
+            background: rgba(250, 112, 154, 0.15);
+            color: #fa709a;
+            border-color: rgba(250, 112, 154, 0.3);
+        }
+
+        .token-warning {
+            background: rgba(67, 233, 123, 0.15);
+            color: #43e97b;
+            border-color: rgba(67, 233, 123, 0.3);
+        }
+
+        /* Search container */
+        .search-container {
+            position: relative;
+        }
+
+        .dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 12px 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+            box-shadow: var(--shadow);
+        }
+
+        .dropdown-item {
+            padding: 16px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+        }
+
+        .dropdown-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--primary-solid);
+        }
+
+        .dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        /* Checkbox */
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .checkbox-container:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--primary-solid);
+        }
+
+        .checkbox {
+            width: 22px;
+            height: 22px;
+            accent-color: var(--primary-solid);
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .checkbox-label {
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 0;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Loading animation */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--primary-solid);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Grid layouts */
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        /* Time inputs styling */
+        input[type="time"], input[type="date"] {
+            color-scheme: dark;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
             }
             
-        } catch (error) {
-            console.error('Failed to load points:', error);
-            this.data.points = [];
-            document.getElementById('tpPointSearch').placeholder = 'Błąd ładowania punktów';
+            .glass-card {
+                padding: 20px;
+                border-radius: 16px;
+            }
+            
+            .header {
+                padding: 20px;
+                border-radius: 16px;
+            }
+            
+            .btn {
+                min-height: 52px;
+                padding: 14px 20px;
+            }
+            
+            .form-control, select {
+                padding: 14px 16px;
+                font-size: 16px; /* Prevents zoom on iOS */
+            }
         }
-    }
 
-    async searchPoints(query) {
-        if (!query || query.length < 2) {
-            this.hidePointDropdown();
-            return;
+        /* Pulse animation for important elements */
+        .pulse {
+            animation: pulse 2s infinite;
         }
 
-        const filteredPoints = this.data.points.filter(point => {
-            const address = point.address ? 
-                `${point.address.streetAddress || ''} ${point.address.streetNumber || ''}, ${point.address.cityName || ''}` : '';
-            const searchString = `${point.ident} ${point.name} ${address}`.toLowerCase();
-            return searchString.includes(query.toLowerCase());
-        });
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(102, 126, 234, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0); }
+        }
 
-        this.showPointDropdown(filteredPoints);
-    }
+        /* Micro-interactions */
+        .interactive {
+            transition: all 0.2s ease;
+        }
 
-    showPointDropdown(points) {
-        const dropdown = document.getElementById('tpPointDropdown');
-        dropdown.innerHTML = '';
-        
-        if (points.length === 0) {
-            const item = document.createElement('div');
-            item.className = 'dropdown-item';
-            item.textContent = 'Brak wyników';
-            dropdown.appendChild(item);
-        } else {
-            points.forEach(point => {
-                const address = point.address ? 
-                    `${point.address.streetAddress || ''} ${point.address.streetNumber || ''}, ${point.address.cityName || ''}` : '';
-                const item = document.createElement('div');
-                item.className = 'dropdown-item';
-                item.innerHTML = `${point.ident} - ${point.name}${address ? `<span style="color:#666"> (${address})</span>` : ''}`;
-                item.addEventListener('click', () => {
-                    this.selectPoint(point);
+        .interactive:active {
+            transform: scale(0.98);
+        }
+
+        /* Form hint */
+        .form-hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Success state styling */
+        .success-state {
+            background: rgba(79, 172, 254, 0.1);
+            border-color: rgba(79, 172, 254, 0.3) !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Install Prompt -->
+        <div id="installPrompt" class="install-prompt">
+            <span class="icon">📱</span>
+            <span class="text">Dodaj TourPlanner do ekranu głównego dla łatwiejszego dostępu!</span>
+            <button id="installBtn" class="btn btn-primary">Zainstaluj</button>
+            <button id="dismissInstall" class="btn btn-secondary">✕</button>
+        </div>
+
+        <!-- Header -->
+        <div class="header">
+            <h1>✨ TourPlanner Pro</h1>
+            <div class="subtitle">Nowa generacja zarządzania akcjami • By Mikołaj B</div>
+        </div>
+
+        <!-- Token Configuration Section -->
+        <div class="glass-card">
+            <div class="card-header">
+                <span class="icon">🔑</span>
+                <span>Konfiguracja połączenia</span>
+            </div>
+            
+            <div id="tokenStatus" class="token-status"></div>
+            
+            <div class="form-group">
+                <label for="username"><span>👤</span> Nazwa użytkownika</label>
+                <input type="text" id="username" class="form-control interactive" placeholder="Wprowadź swoją nazwę użytkownika" autocomplete="username">
+            </div>
+
+            <div class="form-group">
+                <label for="password"><span>🔒</span> Hasło</label>
+                <input type="password" id="password" class="form-control interactive" placeholder="Wprowadź swoje hasło" autocomplete="current-password">
+            </div>
+
+            <div class="form-group">
+                <label for="proxyUrl"><span>🌐</span> Proxy Server URL</label>
+                <input type="url" id="proxyUrl" class="form-control interactive" value="" placeholder="https://your-proxy-server.com">
+                <div class="form-hint">
+                    <span>💡</span>
+                    <span>Zostaw puste aby użyć bieżącego serwera</span>
+                </div>
+            </div>
+            
+            <button id="saveConfig" class="btn btn-primary btn-block interactive">
+                <span>💾</span> Zapisz konfigurację
+            </button>
+            <button id="refreshToken" class="btn btn-secondary btn-block interactive">
+                <span>🔄</span> Odśwież token
+            </button>
+            <button id="testConnection" class="btn btn-warning btn-block interactive">
+                <span>🔍</span> Test połączenia
+            </button>
+            
+            <div id="configStatus" class="status"></div>
+        </div>
+
+        <!-- Action Creation Form -->
+        <div id="actionForm" class="glass-card hidden">
+            <div class="card-header">
+                <span class="icon">📝</span>
+                <span>Tworzenie nowej akcji</span>
+            </div>
+
+            <form id="tpForm">
+                <div class="form-group">
+                    <label for="tpName"><span>📝</span> Nazwa akcji</label>
+                    <input type="text" id="tpName" class="form-control interactive" required placeholder="Wprowadź nazwę akcji">
+                </div>
+
+                <!-- Velo Mode Toggle -->
+                <div class="form-group">
+                    <div class="checkbox-container interactive">
+                        <input type="checkbox" id="veloMode" class="checkbox">
+                        <label for="veloMode" class="checkbox-label">
+                            <span>🚴</span> Tryb Velo
+                        </label>
+                    </div>
+                    <div class="form-hint">
+                        <span>💡</span>
+                        <span>Automatycznie ustawia event "Unconvencional" i dedykowany punkt</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="tpTerr"><span>🌍</span> Region / Terytorium</label>
+                    <select id="tpTerr" class="form-control interactive" required>
+                        <option value="">⏳ Ładowanie regionów...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="tpEvent"><span>🎯</span> Event</label>
+                    <select id="tpEvent" class="form-control interactive" required>
+                        <option value="">Najpierw wybierz region</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="tpPointSearch"><span>📍</span> Punkt akcji</label>
+                    <div class="search-container">
+                        <input type="text" id="tpPointSearch" class="form-control interactive" placeholder="Najpierw wybierz region i event" autocomplete="off" disabled>
+                        <div id="tpPointDropdown" class="dropdown"></div>
+                        <input type="hidden" id="tpPoint" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="tpDate"><span>📅</span> Data realizacji</label>
+                    <input type="date" id="tpDate" class="form-control interactive" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="tpFromTime"><span>🕒</span> Godzina rozpoczęcia</label>
+                    <input type="time" id="tpFromTime" class="form-control interactive" value="10:00" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="tpToTime"><span>🕘</span> Godzina zakończenia</label>
+                    <input type="time" id="tpToTime" class="form-control interactive" value="14:00" required>
+                    <div class="form-hint">
+                        <span>💡</span>
+                        <span>Automatycznie dodane +4h, możesz dostosować</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="tpUserSearch"><span>👥</span> Przypisany personel</label>
+                    <div class="search-container">
+                        <input type="text" id="tpUserSearch" class="form-control interactive" placeholder="Najpierw wybierz region" autocomplete="off" disabled>
+                        <div id="tpUserDropdown" class="dropdown"></div>
+                        <input type="hidden" id="tpUser" required>
+                    </div>
+                </div>
+
+                <button type="submit" id="submitBtn" class="btn btn-primary btn-block interactive pulse">
+                    <span class="btn-text">
+                        <span>🚀</span> Utwórz akcję
+                    </span>
+                    <span class="loading hidden"></span>
+                </button>
+            </form>
+
+            <div id="formStatus" class="status"></div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="glass-card">
+            <div class="card-header">
+                <span class="icon">⚡</span>
+                <span>Szybkie akcje</span>
+            </div>
+            
+            <div class="quick-actions">
+                <button id="refreshData" class="btn btn-secondary interactive">
+                    <span>🔄</span> Odśwież dane
+                </button>
+                <a href="debug.html" class="btn btn-warning interactive">
+                    <span>🔍</span> Panel debugowania
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+
+    <script>
+        // Enhanced interactions
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add interactive feedback
+            document.querySelectorAll('.interactive').forEach(element => {
+                element.addEventListener('mousedown', function() {
+                    this.style.transform = 'scale(0.98)';
                 });
-                dropdown.appendChild(item);
-            });
-        }
-        
-        dropdown.style.display = 'block';
-    }
-
-    selectPoint(point) {
-        const address = point.address ? 
-            `${point.address.streetAddress || ''} ${point.address.streetNumber || ''}, ${point.address.cityName || ''}` : '';
-        const displayName = `${point.ident} - ${point.name}${address ? ` (${address})` : ''}`;
-        
-        document.getElementById('tpPointSearch').value = displayName;
-        document.getElementById('tpPoint').value = `${point.uuid}|${point.ident}|${point.name}|${JSON.stringify(point.address || {})}`;
-        this.hidePointDropdown();
-    }
-
-    hidePointDropdown() {
-        document.getElementById('tpPointDropdown').style.display = 'none';
-    }
-
-    hideUserDropdown() {
-        document.getElementById('tpUserDropdown').style.display = 'none';
-    }
-
-    updateEndTime() {
-    try {
-        const fromTimeEl = document.getElementById('tpFromTime');
-        const toTimeEl = document.getElementById('tpToTime');
-        
-        if (!fromTimeEl || !toTimeEl) {
-            console.warn('updateEndTime: Missing time elements');
-            return;
-        }
-        
-        const fromTime = fromTimeEl.value;
-        
-        if (fromTime) {
-            const [hours, minutes] = fromTime.split(':');
-            const startDate = new Date();
-            startDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-            const endDate = new Date(startDate.getTime() + 4 * 60 * 60 * 1000);
-            const endHour = endDate.getHours().toString().padStart(2, '0');
-            const endMinute = endDate.getMinutes().toString().padStart(2, '0');
-            toTimeEl.value = `${endHour}:${endMinute}`;
-        }
-    } catch (error) {
-        console.error('Error in updateEndTime:', error);
-    }
-}
-
-    async loadUsers() {
-        const territoryData = document.getElementById('tpTerr').value;
-        if (!territoryData) {
-            this.data.users = [];
-            this.clearUsers();
-            return;
-        }
-
-        try {
-            const [territoryUuid] = territoryData.split('|');
-            const today = new Date().toISOString().split('T')[0];
-            
-            console.log(`Loading users for territory: ${territoryUuid}`);
-            const response = await this.apiRequest('user/list', 'POST', {
-                pagination: { page: 0, pageSize: 1000 },
-                availability: { since: today, until: today },
-                territory: { uuids: [territoryUuid] }
-            });
-
-            console.log('Users response:', response);
-            console.log('Users response type:', typeof response);
-            console.log('Users response keys:', Object.keys(response || {}));
-            
-            let users = [];
-            if (response.data && Array.isArray(response.data)) {
-                users = response.data;
-                console.log('Using response.data, first user:', users[0]);
-            } else if (response.items && Array.isArray(response.items)) {
-                users = response.items;
-                console.log('Using response.items, first user:', users[0]);
-            } else if (Array.isArray(response)) {
-                users = response;
-                console.log('Using response directly, first user:', users[0]);
-            } else {
-                console.error('Unexpected users response structure:', response);
-            }
-
-            this.data.users = users;
-            
-            const input = document.getElementById('tpUserSearch');
-            if (users.length > 0) {
-                input.placeholder = `Szukaj personelu... (${users.length} dostępnych)`;
-                input.disabled = false;
-            } else {
-                input.placeholder = 'Brak personelu dla tego regionu';
-                input.disabled = true;
-            }
-            
-        } catch (error) {
-            console.error('Failed to load users:', error);
-            this.data.users = [];
-            document.getElementById('tpUserSearch').placeholder = 'Błąd ładowania personelu';
-        }
-    }
-
-    async searchUsers(query) {
-        if (!query || query.length < 2) {
-            this.hideUserDropdown();
-            return;
-        }
-
-        const filteredUsers = this.data.users.filter(user => {
-            const fullName = `${user.firstname} ${user.lastname}`;
-            const searchString = `${fullName} ${user.ident}`.toLowerCase();
-            return searchString.includes(query.toLowerCase());
-        });
-
-        this.showUserDropdown(filteredUsers);
-    }
-
-    showUserDropdown(users) {
-        const dropdown = document.getElementById('tpUserDropdown');
-        dropdown.innerHTML = '';
-        
-        if (users.length === 0) {
-            const item = document.createElement('div');
-            item.className = 'dropdown-item';
-            item.textContent = 'Brak wyników';
-            dropdown.appendChild(item);
-        } else {
-            users.forEach(user => {
-                const item = document.createElement('div');
-                item.className = 'dropdown-item';
-                item.innerHTML = `${user.firstname} ${user.lastname} <span style="color:#666">(${user.ident})</span>`;
-                item.addEventListener('click', () => {
-                    this.selectUser(user);
+                
+                element.addEventListener('mouseup', function() {
+                    this.style.transform = '';
                 });
-                dropdown.appendChild(item);
+                
+                element.addEventListener('mouseleave', function() {
+                    this.style.transform = '';
+                });
             });
-        }
-        
-        dropdown.style.display = 'block';
-    }
 
-
-    selectUser(user) {
-        const displayName = `${user.firstname} ${user.lastname} (${user.ident})`;
-        document.getElementById('tpUserSearch').value = displayName;
-        document.getElementById('tpUser').value = `${user.uuid}|${user.firstname}|${user.lastname}|${user.ident}`;
-        this.hideUserDropdown();
-    }
-
-    enablePointSearch() {
-        const input = document.getElementById('tpPointSearch');
-        input.disabled = false;
-        input.placeholder = 'Wpisz nazwę punktu...';
-    }
-
-    clearEvents() {
-    try {
-        const select = document.getElementById('tpEvent');
-        if (select) {
-            select.innerHTML = '<option value="">Najpierw wybierz region</option>';
-        }
-    } catch (error) {
-        console.error('Error in clearEvents:', error);
-    }
-}
-
-clearPoints() {
-    try {
-        this.disablePointSearch();
-    } catch (error) {
-        console.error('Error in clearPoints:', error);
-    }
-}
-
-clearUsers() {
-    try {
-        const input = document.getElementById('tpUserSearch');
-        const hiddenInput = document.getElementById('tpUser');
-        
-        if (input) {
-            input.disabled = true;
-            input.placeholder = 'Najpierw wybierz region';
-            input.value = '';
-        }
-        
-        if (hiddenInput) {
-            hiddenInput.value = '';
-        }
-        
-        this.hideUserDropdown();
-    } catch (error) {
-        console.error('Error in clearUsers:', error);
-    }
-}
-
-disablePointSearch() {
-    try {
-        const input = document.getElementById('tpPointSearch');
-        const hiddenInput = document.getElementById('tpPoint');
-        
-        if (input) {
-            input.disabled = true;
-            input.placeholder = 'Najpierw wybierz region i event';
-            input.value = '';
-        }
-        
-        if (hiddenInput) {
-            hiddenInput.value = '';
-        }
-        
-        this.hidePointDropdown();
-    } catch (error) {
-        console.error('Error in disablePointSearch:', error);
-    }
-}
-async createAction() {
-    const form = document.getElementById('tpForm');
-    const submitBtn = document.getElementById('submitBtn');
-    const btnText = submitBtn.querySelector('.btn-text');
-    const loading = submitBtn.querySelector('.loading');
-
-    // Disable form
-    submitBtn.disabled = true;
-    btnText.classList.add('hidden');
-    loading.classList.remove('hidden');
-
-    try {
-        // Get form values with safety checks
-        const nameEl = document.getElementById('tpName');
-        const territoryEl = document.getElementById('tpTerr');
-        const eventEl = document.getElementById('tpEvent');
-        const pointEl = document.getElementById('tpPoint');
-        const userEl = document.getElementById('tpUser');
-        const dateEl = document.getElementById('tpDate');
-        const fromTimeEl = document.getElementById('tpFromTime');
-        const toTimeEl = document.getElementById('tpToTime');
-
-        // Check if all required elements exist
-        if (!nameEl || !territoryEl || !eventEl || !pointEl || !userEl || !dateEl || !fromTimeEl || !toTimeEl) {
-            throw new Error('Brak wymaganych elementów formularza');
-        }
-
-        const name = nameEl.value.trim();
-        const territoryData = territoryEl.value.split('|');
-        const eventData = eventEl.value.split('|');
-        const pointData = pointEl.value.split('|');
-        const userData = userEl.value.split('|');
-        const date = dateEl.value;
-        const fromTime = `${date} ${fromTimeEl.value}:00`;
-        const toTime = `${date} ${toTimeEl.value}:00`;
-
-        // Validate required data
-        if (!name) {
-            throw new Error('Nazwa akcji jest wymagana');
-        }
-        if (territoryData.length < 2 || !territoryData[0]) {
-            throw new Error('Wybierz region/terytorium');
-        }
-        if (eventData.length < 2 || !eventData[0]) {
-            throw new Error('Wybierz event');
-        }
-        if (pointData.length < 4 || !pointData[0]) {
-            throw new Error('Wybierz punkt');
-        }
-        if (userData.length < 4 || !userData[0]) {
-            throw new Error('Wybierz personel');
-        }
-        if (!date) {
-            throw new Error('Wybierz datę');
-        }
-
-        console.log('Form validation passed, creating action...');
-
-        // Parse point address
-        const pointAddress = JSON.parse(pointData[3] || '{}');
-
-        // Create action payload
-        const payload = {
-            action: {
-                new: true,
-                ident: '',
-                name: name,
-                description: '',
-                excerpt: '',
-                since: { date: fromTime },
-                until: { date: toTime },
-                type: { ident: 'Standard' },
-                territory: {
-                    uuid: territoryData[0],
-                    ident: territoryData[1]
-                },
-                area: { uuid: '80dba439-7ca8-11ef-816e-065ed9e1cfca' },
-                event: {
-                    uuid: eventData[0],
-                    name: eventData[1]
-                },
-                actionPoints: [{
-                    trash: false,
-                    point: { uuid: pointData[0] },
-                    ident: pointData[1],
-                    name: pointData[2],
-                    address: {
-                        streetAddress: pointAddress.streetAddress || '',
-                        streetNumber: pointAddress.streetNumber || '',
-                        cityName: pointAddress.cityName || '',
-                        postalCode: pointAddress.postalCode || '',
-                        geoLat: pointAddress.geoLat || '52.51983050',
-                        geoLng: pointAddress.geoLng || '19.81849910'
-                    }
-                }],
-                users: [{
-                    trash: false,
-                    uuid: userData[0],
-                    firstname: userData[1],
-                    lastname: userData[2],
-                    ident: userData[3]
-                }]
-            }
-        };
-
-        console.log('Creating action with payload:', payload);
-
-        const response = await this.apiRequest('action/create', 'POST', payload);
-        
-        console.log('Action created:', response);
-
-        if (response && response.status && response.status.success) {
-            this.showStatus('formStatus', `✅ Akcja utworzona! ID: ${response.data.ident}`, 'success');
-            
-            // Try to auto-accept the action
-            try {
-                const acceptPayload = {
-                    status: { ident: 'accepted' },
-                    action: { uuid: response.data.uuid }
-                };
-                
-                const acceptResponse = await this.apiRequest('action/set-status', 'POST', acceptPayload);
-                
-                if (acceptResponse && acceptResponse.status && acceptResponse.status.success) {
-                    this.showStatus('formStatus', `✅ Akcja utworzona i zaakceptowana! ID: ${response.data.ident}`, 'success');
-                }
-            } catch (acceptError) {
-                console.warn('Auto-accept failed:', acceptError);
-                // Still show success for creation
-            }
-            
-            // Reset form after successful creation - TYLKO TU!
-            setTimeout(() => {
-                console.log('=== RESET DEBUG START ===');
-                try {
-                    console.log('1. Calling form.reset()...');
-                    form.reset();
-                    console.log('2. Form reset completed');
-                    
-                    console.log('3. Calling clearEvents()...');
-                    this.clearEvents();
-                    console.log('4. ClearEvents completed');
-                    
-                    console.log('5. Calling clearPoints()...');
-                    this.clearPoints();
-                    console.log('6. ClearPoints completed');
-                    
-                    console.log('7. Calling clearUsers()...');
-                    this.clearUsers();
-                    console.log('8. ClearUsers completed');
-                    
-                    console.log('9. Setting date...');
-                    const today = new Date().toISOString().split('T')[0];
-                    const dateEl = document.getElementById('tpDate');
-                    if (dateEl) {
-                        dateEl.value = today;
-                        console.log('10. Date set successfully');
+            // Success state for forms
+            const inputs = document.querySelectorAll('.form-control');
+            inputs.forEach(input => {
+                input.addEventListener('change', function() {
+                    if (this.value && this.checkValidity()) {
+                        this.classList.add('success-state');
                     } else {
-                        console.log('10. Date element not found');
+                        this.classList.remove('success-state');
                     }
-                    
-                    console.log('11. Setting time...');
-                    const now = new Date();
-                    const currentHour = now.getHours().toString().padStart(2, '0');
-                    const currentMinute = now.getMinutes().toString().padStart(2, '0');
-                    const fromTimeEl = document.getElementById('tpFromTime');
-                    if (fromTimeEl) {
-                        fromTimeEl.value = `${currentHour}:${currentMinute}`;
-                        console.log('12. From time set successfully');
-                    } else {
-                        console.log('12. From time element not found');
-                    }
-                    
-                    console.log('13. Calling updateEndTime()...');
-                    this.updateEndTime();
-                    console.log('14. UpdateEndTime completed');
-                    
-                    console.log('15. Resetting velo checkbox...');
-                    const veloEl = document.getElementById('veloMode');
-                    if (veloEl) {
-                        veloEl.checked = false;
-                        console.log('16. Velo checkbox reset successfully');
-                    } else {
-                        console.log('16. Velo checkbox not found');
-                    }
-                    
-                    console.log('=== RESET DEBUG SUCCESS ===');
-                } catch (resetError) {
-                    console.error('=== RESET DEBUG ERROR ===', resetError);
-                    console.error('Error stack:', resetError.stack);
-                }
-            }, 2000);
-            
-        } else {
-            this.showStatus('formStatus', '❌ Błąd podczas tworzenia akcji', 'error');
-        }
-        
-        // USUŃ WSZELKIE RESETOWANIE FORMU TUTAJ - nie powinno być żadnego form.reset() poza setTimeout powyżej
-        
-    } catch (error) {
-        console.error('Failed to create action:', error);
-        this.showStatus('formStatus', `❌ Błąd tworzenia akcji: ${error.message}`, 'error');
-    } finally {
-        // Re-enable form - TYLKO włączenie przycisku, żadnego resetowania!
-        submitBtn.disabled = false;
-        btnText.classList.remove('hidden');
-        loading.classList.add('hidden');
-    }
-}
-    async refreshAllData() {
-        this.showStatus('configStatus', 'Odświeżanie danych...', 'warning');
-        
-        try {
-            await this.loadTerritories();
-            this.showStatus('configStatus', '✅ Dane zostały odświeżone', 'success');
-        } catch (error) {
-            this.showStatus('configStatus', `❌ Błąd odświeżania: ${error.message}`, 'error');
-        }
-    }
+                });
+            });
 
-    showStatus(elementId, message, type) {
-        const status = document.getElementById(elementId);
-        status.textContent = message;
-        status.className = `status ${type}`;
-        status.style.display = 'block';
-        
-        if (type === 'success') {
-            setTimeout(() => {
-                status.style.display = 'none';
-            }, 3000);
-        }
-    }
-
-    // PWA functionality
-    async registerServiceWorker() {
-        if ('serviceWorker' in navigator) {
-            try {
-                const registration = await navigator.serviceWorker.register('/sw.js');
-                console.log('Service Worker registered successfully:', registration);
-            } catch (error) {
-                console.log('Service Worker registration failed:', error);
-            }
-        }
-    }
-
-    setupInstallPrompt() {
-        let deferredPrompt;
-        const installPrompt = document.getElementById('installPrompt');
-        const installBtn = document.getElementById('installBtn');
-        const dismissBtn = document.getElementById('dismissInstall');
-
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            installPrompt.style.display = 'block';
-        });
-
-        installBtn.addEventListener('click', async () => {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                const { outcome } = await deferredPrompt.userChoice;
-                console.log(`User response to install prompt: ${outcome}`);
-                deferredPrompt = null;
-                installPrompt.style.display = 'none';
+            // Smooth scroll for mobile
+            if ('scrollBehavior' in document.documentElement.style) {
+                document.documentElement.style.scrollBehavior = 'smooth';
             }
         });
-
-        dismissBtn.addEventListener('click', () => {
-            installPrompt.style.display = 'none';
-        });
-    }
-}
-
-// Initialize the app when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    new TourPlannerApp();
-});
+    </script>
+</body>
+</html>
