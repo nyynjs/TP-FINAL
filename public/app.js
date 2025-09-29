@@ -17,7 +17,9 @@ class TourPlannerApp {
         this.init();
     }
 
-    async init() {
+     async init() {
+        console.log('🚀 TourPlanner PWA initializing...');
+        
         // Load saved configuration
         this.loadConfig();
         
@@ -33,22 +35,42 @@ class TourPlannerApp {
         // Auto-detect proxy URL if empty
         if (!this.config.proxyUrl) {
             this.config.proxyUrl = window.location.origin;
-            document.getElementById('proxyUrl').value = this.config.proxyUrl;
+            const proxyEl = document.getElementById('proxyUrl');
+            if (proxyEl) proxyEl.value = this.config.proxyUrl;
         }
         
         // Update token status
         this.updateTokenStatus();
         
-        // Auto-login if we have credentials but no valid token
-        if (this.config.username && this.config.password && !this.isTokenValid()) {
-            setTimeout(() => {
-                this.refreshToken();
-            }, 1000);
-        } else if (this.isTokenValid()) {
-            // If we have a valid token, load territories
-            console.log('Valid token found, loading territories...');
-            this.loadTerritories();
+        // POPRAWKA PWA: Dodaj małe opóźnienie aby upewnić się że DOM i Service Worker są gotowe
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // POPRAWKA: Sprawdź czy token jest ważny PRZED próbą odświeżenia
+        if (this.config.username && this.config.password) {
+            const tokenValid = this.isTokenValid();
+            console.log('🔍 Token validation result:', tokenValid);
+            
+            if (tokenValid) {
+                // Token jest ważny - załaduj dane od razu
+                console.log('✅ Valid token found, loading data immediately...');
+                // Zaplanuj automatyczne odświeżenie tokenu
+                this.scheduleTokenRefresh();
+                // Małe opóźnienie przed ładowaniem danych (ważne w PWA!)
+                setTimeout(() => {
+                    this.loadTerritories();
+                }, 200);
+            } else {
+                // Token wygasł lub nie istnieje - pobierz nowy
+                console.log('⏰ Token expired or missing, fetching new one...');
+                setTimeout(() => {
+                    this.refreshToken();
+                }, 500);
+            }
+        } else {
+            console.log('⚠️ No credentials found - user needs to login');
         }
+        
+        console.log('✅ TourPlanner PWA initialized successfully');
     }
 
     loadConfig() {
