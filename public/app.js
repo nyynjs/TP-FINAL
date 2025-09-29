@@ -407,37 +407,6 @@ async refreshToken() {
     return await response.json();
 }
 
-    async testConnection() {
-        if (!this.config.username || !this.config.password) {
-            this.showStatus('configStatus', 'Najpierw wprowadź dane logowania!', 'error');
-            return;
-        }
-
-        this.showStatus('configStatus', 'Testowanie połączenia...', 'warning');
-
-        try {
-            // Najpierw pobierz token
-            const tokenRefreshed = await this.refreshToken();
-            if (!tokenRefreshed) {
-                return;
-            }
-
-            // Potem przetestuj API
-            const testData = await this.apiRequest('territory/list', 'POST', {
-                pagination: { page: 0, pageSize: 1 }
-            });
-
-            if (testData && (testData.data || testData.length >= 0)) {
-                this.showStatus('configStatus', '✅ Połączenie działa poprawnie!', 'success');
-            } else {
-                this.showStatus('configStatus', '⚠️ Połączenie działa, ale otrzymano nieoczekiwane dane', 'warning');
-            }
-        } catch (error) {
-            console.error('Connection test failed:', error);
-            this.showStatus('configStatus', `❌ Błąd połączenia: ${error.message}`, 'error');
-        }
-    }
-
     handleVeloModeToggle(isVeloMode) {
     const territoryData = document.getElementById('tpTerr').value;
     
@@ -1134,16 +1103,6 @@ async createAction() {
         loading.classList.add('hidden');
     }
 }
-    async refreshAllData() {
-        this.showStatus('configStatus', 'Odświeżanie danych...', 'warning');
-        
-        try {
-            await this.loadTerritories();
-            this.showStatus('configStatus', '✅ Dane zostały odświeżone', 'success');
-        } catch (error) {
-            this.showStatus('configStatus', `❌ Błąd odświeżania: ${error.message}`, 'error');
-        }
-    }
 
     showStatus(elementId, message, type) {
         const status = document.getElementById(elementId);
