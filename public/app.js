@@ -348,6 +348,57 @@ async refreshToken() {
         return await response.json();
     }
 
+
+    async apiRequestWithUsername(endpoint, method = 'POST', body = null) {
+    // Sprawdź czy token jest ważny przed każdym zapytaniem
+    const tokenValid = await this.ensureValidToken();
+    if (!tokenValid) {
+        throw new Error('Nie można pobrać ważnego tokenu');
+    }
+
+    const url = `${this.config.proxyUrl}/api/tourplanner/${endpoint}`;
+    
+    const options = {
+        method,
+        headers: {
+            'Authorization': `Bearer ${this.config.bearerToken}`,
+            'Content-Type': 'application/json',
+            // NOWE: Dodaj nazwę użytkownika do headerów
+            'X-Username': this.config.username
+        }
+    };
+
+    if (body && method !== 'GET') {
+        options.body = JSON.stringify(body);
+    }
+
+    console.log(`Making API request to: ${url} with username: ${this.config.username}`);
+    const response = await fetch(url, options);
+    
+    if (!response.ok) {
+        // Jeśli błąd 401, spróbuj odświeżyć token i powtórzyć zapytanie
+        if (response.status === 401) {
+            console.log('Otrzymano 401, odświeżanie tokenu...');
+            const refreshed = await this.refreshToken();
+            if (refreshed) {
+                // Powtórz zapytanie z nowym tokenem
+                options.headers['Authorization'] = `Bearer ${this.config.bearerToken}`;
+                const retryResponse = await fetch(url, options);
+                if (!retryResponse.ok) {
+                    const errorText = await retryResponse.text();
+                    throw new Error(`API Error ${retryResponse.status}: ${errorText}`);
+                }
+                return await retryResponse.json();
+            }
+        }
+        
+        const errorText = await response.text();
+        throw new Error(`API Error ${response.status}: ${errorText}`);
+    }
+
+    return await response.json();
+}
+
     async testConnection() {
         if (!this.config.username || !this.config.password) {
             this.showStatus('configStatus', 'Najpierw wprowadź dane logowania!', 'error');
@@ -975,7 +1026,8 @@ async createAction() {
 
         console.log('Creating action with payload:', payload);
 
-        const response = await this.apiRequest('action/create', 'POST', payload);
+        // ZMIANA: Dodaj nazwę użytkownika do requestu
+        const response = await this.apiRequestWithUsername('action/create', 'POST', payload);
         
         console.log('Action created:', response);
 
@@ -996,10 +1048,9 @@ async createAction() {
                 }
             } catch (acceptError) {
                 console.warn('Auto-accept failed:', acceptError);
-                // Still show success for creation
             }
             
-            // Reset form after successful creation - TYLKO TU!
+            // Reset form after successful creation
             setTimeout(() => {
                 console.log('=== RESET DEBUG START ===');
                 try {
@@ -1065,13 +1116,11 @@ async createAction() {
             this.showStatus('formStatus', '❌ Błąd podczas tworzenia akcji', 'error');
         }
         
-        // USUŃ WSZELKIE RESETOWANIE FORMU TUTAJ - nie powinno być żadnego form.reset() poza setTimeout powyżej
-        
     } catch (error) {
         console.error('Failed to create action:', error);
         this.showStatus('formStatus', `❌ Błąd tworzenia akcji: ${error.message}`, 'error');
     } finally {
-        // Re-enable form - TYLKO włączenie przycisku, żadnego resetowania!
+        // Re-enable form
         submitBtn.disabled = false;
         btnText.classList.remove('hidden');
         loading.classList.add('hidden');
