@@ -349,7 +349,7 @@ async refreshToken() {
     }
 
 
-    async apiRequestWithUsername(endpoint, method = 'POST', body = null) {
+   async apiRequestWithUsername(endpoint, method = 'POST', body = null) {
     // Sprawdź czy token jest ważny przed każdym zapytaniem
     const tokenValid = await this.ensureValidToken();
     if (!tokenValid) {
@@ -357,6 +357,12 @@ async refreshToken() {
     }
 
     const url = `${this.config.proxyUrl}/api/tourplanner/${endpoint}`;
+    
+    // POPRAWKA: Upewnij się że username jest zawsze załadowany z localStorage
+    if (!this.config.username) {
+        this.config.username = localStorage.getItem('tp_username') || 'Nieznany użytkownik';
+        console.log('⚠️ Username was empty, loaded from localStorage:', this.config.username);
+    }
     
     const options = {
         method,
@@ -372,7 +378,9 @@ async refreshToken() {
         options.body = JSON.stringify(body);
     }
 
-    console.log(`Making API request to: ${url} with username: ${this.config.username}`);
+    console.log(`Making API request to: ${url}`);
+    console.log(`Username being sent: ${this.config.username}`);
+    console.log(`Request headers:`, options.headers);
     const response = await fetch(url, options);
     
     if (!response.ok) {
